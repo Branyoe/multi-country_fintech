@@ -1,0 +1,94 @@
+flowchart TD
+
+    START(["POST /api/auth/token/"])
+
+    VALIDATE_BODY{"¿Email y password\npresentes?"}
+    E400["400 Bad Request\nCampos requeridos"]
+
+    FIND_USER{"¿Usuario existe\nen DB?"}
+    E401_USER["401 Unauthorized\nCredenciales inválidas"]
+
+    CHECK_PASS{"¿Password\ncorrecto?"}
+    E401_PASS["401 Unauthorized\nCredenciales inválidas"]
+
+    CHECK_ACTIVE{"¿Usuario activo?"}
+    E403["403 Forbidden\nCuenta desactivada"]
+
+    GENERATE["Generar par de tokens\nSimpleJWT"]
+
+    ACCESS["access token\nExpira en 15 min"]
+    REFRESH["refresh token\nExpira en 7 días"]
+
+    RESPONSE_OK(["200 OK\naccess + refresh tokens"])
+
+    REQ(["Request a endpoint\nprotegido"])
+
+    EXTRACT{"¿Header Authorization\nBearer presente?"}
+    E401_MISSING["401 Unauthorized\nToken ausente"]
+
+    DECODE{"¿Token válido\ny no expirado?"}
+    E401_INVALID["401 Unauthorized\nToken inválido o expirado"]
+
+    ATTACH["Adjuntar user\nal request"]
+
+    VIEW["Ejecutar view\nLógica de negocio"]
+
+    RESPONSE_VIEW(["Response del endpoint"])
+
+    REFRESH_START(["POST /api/auth/token/refresh/"])
+
+    REFRESH_VALID{"¿Refresh token\nválido?"}
+    E401_REFRESH["401 Unauthorized\nRefresh token inválido"]
+
+    NEW_ACCESS["Generar nuevo\naccess token"]
+
+    RESPONSE_REFRESH(["200 OK\nnuevo access token"])
+
+    START --> VALIDATE_BODY
+    VALIDATE_BODY -- "No" --> E400
+    VALIDATE_BODY -- "Sí" --> FIND_USER
+    FIND_USER -- "No" --> E401_USER
+    FIND_USER -- "Sí" --> CHECK_PASS
+    CHECK_PASS -- "No" --> E401_PASS
+    CHECK_PASS -- "Sí" --> CHECK_ACTIVE
+    CHECK_ACTIVE -- "No" --> E403
+    CHECK_ACTIVE -- "Sí" --> GENERATE
+    GENERATE --> ACCESS
+    GENERATE --> REFRESH
+    ACCESS --> RESPONSE_OK
+    REFRESH --> RESPONSE_OK
+
+    REQ --> EXTRACT
+    EXTRACT -- "No" --> E401_MISSING
+    EXTRACT -- "Sí" --> DECODE
+    DECODE -- "No" --> E401_INVALID
+    DECODE -- "Sí" --> ATTACH
+    ATTACH --> VIEW
+    VIEW --> RESPONSE_VIEW
+
+    REFRESH_START --> REFRESH_VALID@
+    REFRESH_VALID -- "No" --> E401_REFRESH
+    REFRESH_VALID -- "Sí" --> NEW_ACCESS
+    NEW_ACCESS --> RESPONSE_REFRESH
+
+    E401_INVALID -.->|"token expirado"| REFRESH_START
+
+    style START fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style RESPONSE_OK fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style RESPONSE_VIEW fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style RESPONSE_REFRESH fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style REFRESH_START fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style REQ fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style E400 fill:#F09595,stroke:#A32D2D,color:#501313
+    style E401_USER fill:#F09595,stroke:#A32D2D,color:#501313
+    style E401_PASS fill:#F09595,stroke:#A32D2D,color:#501313
+    style E401_MISSING fill:#F09595,stroke:#A32D2D,color:#501313
+    style E401_INVALID fill:#F09595,stroke:#A32D2D,color:#501313
+    style E401_REFRESH fill:#F09595,stroke:#A32D2D,color:#501313
+    style E403 fill:#FAC775,stroke:#854F0B,color:#412402
+    style GENERATE fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style ACCESS fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style REFRESH fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style NEW_ACCESS fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style ATTACH fill:#9FE1CB,stroke:#0F6E56,color:#04342C
+    style VIEW fill:#9FE1CB,stroke:#0F6E56,color:#04342C

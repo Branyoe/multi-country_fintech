@@ -1,0 +1,76 @@
+flowchart TD
+
+    START(["POST /api/applications/"])
+
+    JWT["JWT validation\nBearer token"]
+
+    JWT_OK{"¿Token válido?"}
+    E401["401 Unauthorized"]
+
+    VALIDATOR["Country validator\nStrategy por país"]
+
+    RULES_OK{"¿Reglas válidas?"}
+    E422["422 Validation error"]
+
+    BANK["Bank provider mock\nDatos bancarios por país"]
+
+    SAVE["Guardar en PostgreSQL\n+ disparar pg_notify"]
+
+    ENQUEUE["Celery job enqueued\nEvaluación en background"]
+
+    RESPONSE(["201 Created"])
+
+    CELERY["Job recibido por Celery\nDesde Redis queue"]
+
+    RISK["Evaluación de riesgo\nReglas + datos bancarios"]
+
+    RESULT{"Resultado del análisis"}
+
+    APPROVED["approved"]
+    REJECTED["rejected"]
+    REVIEW["under_review"]
+
+    STATUS["Actualizar status en DB\n+ application_status_history"]
+
+    CHANNELS["pg_notify → Django Channels\nWebSocket push al frontend"]
+
+    AUDIT["Audit log + Webhook\nRegistro + notif. externa"]
+
+    END(["Flujo completado"])
+
+    START --> JWT
+    JWT --> JWT_OK
+    JWT_OK -- "No" --> E401
+    JWT_OK -- "Sí" --> VALIDATOR
+    VALIDATOR --> RULES_OK
+    RULES_OK -- "No" --> E422
+    RULES_OK -- "Sí" --> BANK
+    BANK --> SAVE
+    SAVE --> ENQUEUE
+    ENQUEUE --> RESPONSE
+
+    ENQUEUE -.->|"async"| CELERY
+    CELERY --> RISK
+    RISK --> RESULT
+    RESULT -- "score alto" --> APPROVED
+    RESULT -- "score bajo" --> REJECTED
+    RESULT -- "requiere revisión" --> REVIEW
+    APPROVED --> STATUS
+    REJECTED --> STATUS
+    REVIEW --> STATUS
+    STATUS --> CHANNELS
+    CHANNELS --> AUDIT
+    AUDIT --> END
+
+    style E401 fill:#F09595,stroke:#A32D2D,color:#501313
+    style E422 fill:#F09595,stroke:#A32D2D,color:#501313
+    style APPROVED fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style REJECTED fill:#F09595,stroke:#A32D2D,color:#501313
+    style REVIEW fill:#FAC775,stroke:#854F0B,color:#412402
+    style START fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style END fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style ENQUEUE fill:#F5C4B3,stroke:#993C1D,color:#4A1B0C
+    style CELERY fill:#F5C4B3,stroke:#993C1D,color:#4A1B0C
+    style CHANNELS fill:#9FE1CB,stroke:#0F6E56,color:#04342C
+    style SAVE fill:#B5D4F4,stroke:#185FA5,color:#042C53
+    style STATUS fill:#B5D4F4,stroke:#185FA5,color:#042C53

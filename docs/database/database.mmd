@@ -1,0 +1,91 @@
+erDiagram
+
+    USERS {
+        uuid id PK
+        string email
+        string hashed_password
+        string role
+        timestamp created_at
+    }
+
+    CREDIT_APPLICATIONS {
+        uuid id PK
+        uuid user_id FK
+        string country
+        string full_name
+        string document_type
+        string document_number
+        decimal amount_requested
+        decimal monthly_income
+        string status
+        timestamp requested_at
+        timestamp updated_at
+    }
+
+    COUNTRY_VALIDATIONS {
+        uuid id PK
+        uuid application_id FK
+        string rule_name
+        boolean passed
+        string detail
+        timestamp evaluated_at
+    }
+
+    BANK_PROVIDER_DATA {
+        uuid id PK
+        uuid application_id FK
+        string provider_name
+        decimal total_debt
+        decimal credit_score
+        string account_status
+        jsonb raw_response
+        timestamp fetched_at
+    }
+
+    APPLICATION_STATUS_HISTORY {
+        uuid id PK
+        uuid application_id FK
+        string from_status
+        string to_status
+        string changed_by
+        timestamp changed_at
+    }
+
+    ASYNC_JOBS {
+        uuid id PK
+        uuid application_id FK
+        string job_type
+        string status
+        jsonb payload
+        int attempts
+        timestamp created_at
+        timestamp processed_at
+    }
+
+    AUDIT_LOG {
+        uuid id PK
+        uuid application_id FK
+        string event_type
+        string actor
+        jsonb metadata
+        timestamp occurred_at
+    }
+
+    WEBHOOK_EVENTS {
+        uuid id PK
+        uuid application_id FK
+        string direction
+        string source
+        string event_type
+        jsonb payload
+        int http_status
+        timestamp received_at
+    }
+
+    USERS ||--o{ CREDIT_APPLICATIONS : "crea"
+    CREDIT_APPLICATIONS ||--o{ COUNTRY_VALIDATIONS : "tiene"
+    CREDIT_APPLICATIONS ||--|| BANK_PROVIDER_DATA : "tiene"
+    CREDIT_APPLICATIONS ||--o{ APPLICATION_STATUS_HISTORY : "registra"
+    CREDIT_APPLICATIONS ||--o{ ASYNC_JOBS : "genera"
+    CREDIT_APPLICATIONS ||--o{ AUDIT_LOG : "genera"
+    CREDIT_APPLICATIONS ||--o{ WEBHOOK_EVENTS : "asocia"
