@@ -1,0 +1,18 @@
+[
+  {
+    "model": "users.user",
+    "pk": "69c69c8b-a642-4a35-b812-01d600da09cb",
+    "fields": {
+      "password": "pbkdf2_sha256$1200000$VVOc9aV8Wbi2XyVEIdKIPQ$CXNtCQQ6EqHtmYp5xBHK9wL4qoMRbT7wxnTnL1yq4gA=",
+      "last_login": null,
+      "is_superuser": true,
+      "email": "admin@dev.local",
+      "role": "admin",
+      "is_active": true,
+      "is_staff": true,
+      "created_at": "2026-04-08T00:00:00.000Z",
+      "groups": [],
+      "user_permissions": []
+    }
+  }
+]
