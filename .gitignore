@@ -5,3 +5,5 @@
 .playwright/
 .playwright-cli/
 .vscode
+
+.idea/
