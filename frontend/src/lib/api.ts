@@ -2,9 +2,12 @@ import axios from 'axios'
 import { tokenStorage } from '~/lib/auth'
 import { useAuthStore } from '~/features/auth/store'
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api',
-})
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api'
+
+export const api = axios.create({ baseURL: BASE_URL })
+
+// Client sin interceptors para endpoints públicos (auth)
+export const publicApi = axios.create({ baseURL: BASE_URL })
 
 // Inject access token on every request
 api.interceptors.request.use((config) => {
@@ -29,7 +32,6 @@ api.interceptors.response.use(
     const refresh = tokenStorage.getRefresh()
     if (!refresh) {
       useAuthStore.getState().clearAuth()
-      window.location.href = '/login'
       return Promise.reject(error)
     }
 
