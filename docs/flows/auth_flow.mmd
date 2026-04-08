@@ -1,94 +1,123 @@
 flowchart TD
 
-    START(["POST /api/auth/token/"])
+    %% ── App bootstrap ──────────────────────────────────────────
+    BOOT(["App carga — bootstrap()"])
 
-    VALIDATE_BODY{"¿Email y password\npresentes?"}
-    E400["400 Bad Request\nCampos requeridos"]
+    CHECK_RT{"¿refresh token en localStorage?"}
 
-    FIND_USER{"¿Usuario existe\nen DB?"}
-    E401_USER["401 Unauthorized\nCredenciales inválidas"]
+    REFRESH_BOOT["POST /api/auth/token/refresh/"]
+    BOOT_OK["setTokens — Zustand + localStorage"]
+    BOOT_FAIL["clearTokens — localStorage vacío"]
 
-    CHECK_PASS{"¿Password\ncorrecto?"}
-    E401_PASS["401 Unauthorized\nCredenciales inválidas"]
+    READY(["App lista — RouterProvider mount"])
 
-    CHECK_ACTIVE{"¿Usuario activo?"}
-    E403["403 Forbidden\nCuenta desactivada"]
+    BOOT --> CHECK_RT
+    CHECK_RT -- "No" --> READY
+    CHECK_RT -- "Sí" --> REFRESH_BOOT
+    REFRESH_BOOT -- "200 OK" --> BOOT_OK --> READY
+    REFRESH_BOOT -- "401" --> BOOT_FAIL --> READY
 
-    GENERATE["Generar par de tokens\nSimpleJWT"]
+    %% ── Route loader guard ──────────────────────────────────────
+    NAV(["Navegación a ruta protegida /"])
 
-    ACCESS["access token\nExpira en 15 min"]
-    REFRESH["refresh token\nExpira en 7 días"]
+    LOADER{"requireAuth loader — ¿accessToken en Zustand?"}
+    REDIRECT_LOGIN["redirect /login?next=/"]
 
-    RESPONSE_OK(["200 OK\naccess + refresh tokens"])
+    RENDER_HOME(["Renderiza HomePage — scaffold"])
 
-    REQ(["Request a endpoint\nprotegido"])
+    READY --> NAV
+    NAV --> LOADER
+    LOADER -- "No" --> REDIRECT_LOGIN
+    LOADER -- "Sí" --> RENDER_HOME
 
-    EXTRACT{"¿Header Authorization\nBearer presente?"}
-    E401_MISSING["401 Unauthorized\nToken ausente"]
+    %% ── Signup ──────────────────────────────────────────────────
+    SIGNUP_START(["POST /signup — Form method post"])
 
-    DECODE{"¿Token válido\ny no expirado?"}
-    E401_INVALID["401 Unauthorized\nToken inválido o expirado"]
+    SIGNUP_API["publicApi — POST /api/auth/signup/"]
 
-    ATTACH["Adjuntar user\nal request"]
+    SIGNUP_OK["redirect /login?registered=1 — banner verde"]
 
-    VIEW["Ejecutar view\nLógica de negocio"]
+    SIGNUP_ERR["return error — useActionData a UI"]
+    E400_DUP["400 email ya existe"]
+    E400_PASS["400 password inválido"]
 
-    RESPONSE_VIEW(["Response del endpoint"])
+    SIGNUP_START --> SIGNUP_API
+    SIGNUP_API -- "201 Created" --> SIGNUP_OK --> REDIRECT_LOGIN
+    SIGNUP_API -- "400" --> E400_DUP --> SIGNUP_ERR
+    SIGNUP_API -- "400" --> E400_PASS --> SIGNUP_ERR
 
-    REFRESH_START(["POST /api/auth/token/refresh/"])
+    %% ── Login ───────────────────────────────────────────────────
+    LOGIN_START(["POST /login — Form method post"])
 
-    REFRESH_VALID{"¿Refresh token\nválido?"}
-    E401_REFRESH["401 Unauthorized\nRefresh token inválido"]
+    LOGIN_BODY{"¿Email y password presentes?"}
+    E_HTML5["No navega — HTML5 required"]
 
-    NEW_ACCESS["Generar nuevo\naccess token"]
+    LOGIN_API["publicApi — POST /api/auth/token/"]
 
-    RESPONSE_REFRESH(["200 OK\nnuevo access token"])
+    LOGIN_OK["setTokens — Zustand + localStorage — redirect /"]
 
-    START --> VALIDATE_BODY
-    VALIDATE_BODY -- "No" --> E400
-    VALIDATE_BODY -- "Sí" --> FIND_USER
-    FIND_USER -- "No" --> E401_USER
-    FIND_USER -- "Sí" --> CHECK_PASS
-    CHECK_PASS -- "No" --> E401_PASS
-    CHECK_PASS -- "Sí" --> CHECK_ACTIVE
-    CHECK_ACTIVE -- "No" --> E403
-    CHECK_ACTIVE -- "Sí" --> GENERATE
-    GENERATE --> ACCESS
-    GENERATE --> REFRESH
-    ACCESS --> RESPONSE_OK
-    REFRESH --> RESPONSE_OK
+    LOGIN_ERR["Credenciales inválidas — useActionData a UI"]
 
-    REQ --> EXTRACT
-    EXTRACT -- "No" --> E401_MISSING
-    EXTRACT -- "Sí" --> DECODE
-    DECODE -- "No" --> E401_INVALID
-    DECODE -- "Sí" --> ATTACH
-    ATTACH --> VIEW
-    VIEW --> RESPONSE_VIEW
+    E401["401 Unauthorized"]
+    E_UNEXPECTED["Error inesperado"]
 
-    REFRESH_START --> REFRESH_VALID@
-    REFRESH_VALID -- "No" --> E401_REFRESH
-    REFRESH_VALID -- "Sí" --> NEW_ACCESS
-    NEW_ACCESS --> RESPONSE_REFRESH
+    REDIRECT_LOGIN --> LOGIN_START
+    LOGIN_START --> LOGIN_BODY
+    LOGIN_BODY -- "No" --> E_HTML5
+    LOGIN_BODY -- "Sí" --> LOGIN_API
+    LOGIN_API -- "200 OK" --> LOGIN_OK --> RENDER_HOME
+    LOGIN_API -- "401" --> E401 --> LOGIN_ERR
+    LOGIN_API -- "otro error" --> E_UNEXPECTED --> LOGIN_ERR
 
-    E401_INVALID -.->|"token expirado"| REFRESH_START
+    %% ── Request a endpoint protegido ────────────────────────────
+    REQ(["Request a endpoint protegido via api"])
 
-    style START fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
-    style RESPONSE_OK fill:#C0DD97,stroke:#3B6D11,color:#173404
-    style RESPONSE_VIEW fill:#C0DD97,stroke:#3B6D11,color:#173404
-    style RESPONSE_REFRESH fill:#C0DD97,stroke:#3B6D11,color:#173404
-    style REFRESH_START fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
-    style REQ fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
-    style E400 fill:#F09595,stroke:#A32D2D,color:#501313
-    style E401_USER fill:#F09595,stroke:#A32D2D,color:#501313
-    style E401_PASS fill:#F09595,stroke:#A32D2D,color:#501313
-    style E401_MISSING fill:#F09595,stroke:#A32D2D,color:#501313
-    style E401_INVALID fill:#F09595,stroke:#A32D2D,color:#501313
-    style E401_REFRESH fill:#F09595,stroke:#A32D2D,color:#501313
-    style E403 fill:#FAC775,stroke:#854F0B,color:#412402
-    style GENERATE fill:#CECBF6,stroke:#534AB7,color:#26215C
-    style ACCESS fill:#CECBF6,stroke:#534AB7,color:#26215C
-    style REFRESH fill:#CECBF6,stroke:#534AB7,color:#26215C
-    style NEW_ACCESS fill:#CECBF6,stroke:#534AB7,color:#26215C
-    style ATTACH fill:#9FE1CB,stroke:#0F6E56,color:#04342C
-    style VIEW fill:#9FE1CB,stroke:#0F6E56,color:#04342C
+    INJECT["request interceptor — Authorization Bearer access"]
+
+    RES_OK(["Response exitosa"])
+
+    IS_401{"¿401?"}
+    HAS_RT{"¿refresh token en localStorage?"}
+
+    DO_REFRESH["POST /api/auth/token/refresh/ con refresh guardado"]
+
+    RETRY["setTokens nuevo access — reintentar request — vaciar cola"]
+
+    CLEAR_REDIRECT["clearAuth — window.location /login"]
+
+    RENDER_HOME --> REQ
+    REQ --> INJECT --> IS_401
+    IS_401 -- "No" --> RES_OK
+    IS_401 -- "Sí" --> HAS_RT
+    HAS_RT -- "No" --> CLEAR_REDIRECT
+    HAS_RT -- "Sí" --> DO_REFRESH
+    DO_REFRESH -- "200 OK" --> RETRY --> RES_OK
+    DO_REFRESH -- "401 inválido" --> CLEAR_REDIRECT
+
+    %% ── Logout ──────────────────────────────────────────────────
+    LOGOUT(["Logout — clearAuth + navigate /login"])
+    RENDER_HOME --> LOGOUT --> REDIRECT_LOGIN
+
+    %% ── Styles ──────────────────────────────────────────────────
+    style BOOT fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style READY fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style RENDER_HOME fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style RES_OK fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style SIGNUP_OK fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style LOGIN_OK fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style LOGIN_ERR fill:#F09595,stroke:#A32D2D,color:#501313
+    style SIGNUP_ERR fill:#F09595,stroke:#A32D2D,color:#501313
+    style E401 fill:#F09595,stroke:#A32D2D,color:#501313
+    style E400_DUP fill:#F09595,stroke:#A32D2D,color:#501313
+    style E400_PASS fill:#F09595,stroke:#A32D2D,color:#501313
+    style E_UNEXPECTED fill:#F09595,stroke:#A32D2D,color:#501313
+    style CLEAR_REDIRECT fill:#F09595,stroke:#A32D2D,color:#501313
+    style E_HTML5 fill:#FAC775,stroke:#854F0B,color:#412402
+    style BOOT_FAIL fill:#FAC775,stroke:#854F0B,color:#412402
+    style DO_REFRESH fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style RETRY fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style REFRESH_BOOT fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style BOOT_OK fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style LOGIN_API fill:#9FE1CB,stroke:#0F6E56,color:#04342C
+    style SIGNUP_API fill:#9FE1CB,stroke:#0F6E56,color:#04342C
+    style INJECT fill:#9FE1CB,stroke:#0F6E56,color:#04342C

@@ -5,3 +5,7 @@
 .playwright/
 .playwright-cli/
 .vscode
+
+.idea/
+
+CLAUDE.md
