@@ -1,0 +1,34 @@
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+
+
+@dataclass
+class BankData:
+    provider_name:  str
+    account_status: str
+    total_debt:     float | None = None
+    credit_score:   int   | None = None
+    raw_response:   dict         = field(default_factory=dict)
+
+
+class BaseCountryValidator(ABC):
+
+    @abstractmethod
+    def get_document_type(self) -> str: ...
+
+    @abstractmethod
+    def validate_document(self, document: str) -> tuple[bool, str]: ...
+
+    @abstractmethod
+    def fetch_bank_data(self, document: str) -> BankData: ...
+
+    @abstractmethod
+    def validate_financial_rules(
+        self, amount: float, income: float, bank_data: BankData
+    ) -> tuple[bool, str]: ...
+
+    def get_initial_status(self) -> str:
+        return 'pending'
+
+    def get_validation_rules(self) -> list[str]:
+        return []
