@@ -147,6 +147,22 @@ STORAGES = {
     },
 }
 
+# ── Cache (Redis DB 1 — Celery usa DB 0) ─────────────────────────────────────
+CACHE_URL = config('CACHE_URL', default='redis://localhost:6379/1')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': CACHE_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            # Si Redis no está disponible, las operaciones de cache fallan silenciosamente
+            # (cache miss → query a DB). El servicio sigue funcionando sin Redis.
+            'IGNORE_EXCEPTIONS': True,
+        },
+    }
+}
+
 # ── Celery ────────────────────────────────────────────────────────────────────
 CELERY_BROKER_URL        = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND    = 'django-db'
