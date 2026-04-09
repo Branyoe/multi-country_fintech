@@ -30,7 +30,7 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 Desde la **raíz del repositorio**:
 
 ```bash
-bash gen.sh
+bash backend/gen.sh
 ```
 
 El script hace en orden:

@@ -130,7 +130,7 @@ Para desarrollo ultra-rápido con SQLite y sin contenedores.
 
 ```bash
 # Primera vez: dependencias + migraciones + fixtures
-bash gen.sh
+bash backend/gen.sh
 
 # Servidor de desarrollo
 uv run backend/manage.py runserver
