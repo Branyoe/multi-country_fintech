@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '~/components/ui/select'
+import { applyApiErrors } from '~/lib/form-errors'
 import { createApplication } from '../api'
 import type { ApplicationCountry } from '../types'
 
@@ -55,6 +56,7 @@ export function CreateApplicationForm() {
     control,
     setValue,
     reset,
+    setError,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -72,14 +74,14 @@ export function CreateApplicationForm() {
       setApiError(null)
     },
     onError: (err: unknown) => {
-      const data = (err as { response?: { data?: { detail?: string; document_number?: string[]; non_field_errors?: string[] } } })
-        ?.response?.data
-      const msg =
-        data?.document_number?.[0] ??
-        data?.non_field_errors?.[0] ??
-        data?.detail ??
-        'Error al crear la solicitud'
-      setApiError(msg)
+      const nonFieldError = applyApiErrors(err, setError, [
+        'country',
+        'full_name',
+        'document_number',
+        'amount_requested',
+        'monthly_income',
+      ] as const)
+      setApiError(nonFieldError)
     },
   })
 
