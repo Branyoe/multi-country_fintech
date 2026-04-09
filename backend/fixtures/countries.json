@@ -1,0 +1,28 @@
+[
+  {
+    "model": "applications.country",
+    "pk": 1,
+    "fields": {
+      "code": "MX",
+      "label": "México",
+      "document_type": "CURP",
+      "document_hint": "18 caracteres alfanuméricos",
+      "document_example": "PERJ800101HDFRZN09",
+      "document_regex": "^[A-Z]{4}\\d{6}[HM][A-Z]{5}[A-Z0-9]\\d$",
+      "is_active": true
+    }
+  },
+  {
+    "model": "applications.country",
+    "pk": 2,
+    "fields": {
+      "code": "CO",
+      "label": "Colombia",
+      "document_type": "CC",
+      "document_hint": "Entre 6 y 10 dígitos numéricos",
+      "document_example": "1234567890",
+      "document_regex": "^\\d{6,10}$",
+      "is_active": true
+    }
+  }
+]

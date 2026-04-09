@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     ApplicationStatusHistory,
     BankProviderData,
+    Country,
     CountryValidation,
     CreditApplication,
 )
@@ -69,3 +70,10 @@ class ApplicationStatusHistoryAdmin(admin.ModelAdmin):
     list_display  = ('id', 'application', 'from_status', 'to_status', 'changed_by', 'changed_at')
     list_filter   = ('from_status', 'to_status')
     readonly_fields = ('id', 'changed_at')
+
+
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    list_display  = ('code', 'label', 'document_type', 'is_active')
+    list_editable = ('is_active',)
+    search_fields = ('code', 'label')

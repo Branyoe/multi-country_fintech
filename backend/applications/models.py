@@ -103,3 +103,20 @@ class ApplicationStatusHistory(models.Model):
 
     def __str__(self):
         return f'{self.from_status} → {self.to_status} by {self.changed_by}'
+
+
+class Country(models.Model):
+    code             = models.CharField(max_length=10, unique=True)
+    label            = models.CharField(max_length=100)
+    document_type    = models.CharField(max_length=50)
+    document_hint    = models.CharField(max_length=200)
+    document_example = models.CharField(max_length=100)
+    document_regex   = models.CharField(max_length=500)
+    is_active        = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'country'
+        ordering = ['code']
+
+    def __str__(self):
+        return f'{self.code} — {self.label}'
