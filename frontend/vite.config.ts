@@ -5,7 +5,14 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 3000 },
+  server: {
+    port: 3000,
+    proxy: {
+      '/api':    { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
+      '/admin':  { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
+      '/static': { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
+    },
+  },
   resolve: {
     alias: {
       '~': path.resolve(__dirname, './src'),
