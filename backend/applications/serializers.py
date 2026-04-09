@@ -4,7 +4,7 @@ from .models import CreditApplication
 
 
 class CreditApplicationSerializer(serializers.ModelSerializer):
-    user = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    """Serializer de escritura — document_type lo fija el service según el país."""
 
     amount_requested = serializers.DecimalField(
         max_digits=12, decimal_places=2,
@@ -18,25 +18,12 @@ class CreditApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CreditApplication
         fields = [
-            'id', 'user', 'country', 'full_name',
-            'document_type', 'document_number',
-            'amount_requested', 'monthly_income',
-            'status', 'requested_at', 'updated_at',
+            'country',
+            'full_name',
+            'document_number',
+            'amount_requested',
+            'monthly_income',
         ]
-        read_only_fields = ['id', 'status', 'requested_at', 'updated_at']
-
-    def validate(self, attrs):
-        country = attrs.get('country')
-        document_type = attrs.get('document_type')
-        expected = CreditApplication.COUNTRY_DOCUMENT_MAP.get(country)
-
-        if expected and document_type != expected:
-            raise serializers.ValidationError({
-                'document_type': (
-                    f'{country} requires {expected}, got {document_type}.'
-                )
-            })
-        return attrs
 
 
 class CreditApplicationStatusSerializer(serializers.ModelSerializer):
