@@ -25,7 +25,7 @@ export default function HomePage() {
               <span className="text-sm text-muted-foreground">{user.email}</span>
             )}
             <Button variant="outline" size="sm" onClick={logout}>
-              Cerrar sesión ssss
+              Cerrar sesión
             </Button>
           </div>
         </div>
