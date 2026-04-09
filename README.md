@@ -196,8 +196,40 @@ Base URL (Docker prod): `http://localhost:3000/api/`
 | POST | `/applications/` | Bearer | Crear solicitud |
 | GET | `/applications/{id}/` | Bearer | Detalle |
 | PATCH | `/applications/{id}/` | Bearer | Actualizar estado |
+| GET | `/applications/countries/` | Libre | Metadata de países disponibles |
 
 Header: `Authorization: Bearer <access_token>`
+
+---
+
+## Sistema de países dinámico
+
+Los países disponibles para crear solicitudes de crédito se gestionan desde la base de datos, **sin tocar el código del frontend**.
+
+### Cómo funciona
+
+```
+BD → modelo Country → cache Redis → GET /api/applications/countries/ → Frontend
+```
+
+1. El modelo `Country` almacena la metadata de cada país: código, nombre, tipo de documento, hint, ejemplo y regex de validación.
+2. El backend cachea esa información en Redis al primer acceso. Las siguientes peticiones no tocan la base de datos.
+3. Cuando un administrador edita o elimina un país desde el **Django Admin**, una señal `post_save` invalida el cache automáticamente.
+4. El frontend consulta el endpoint al cargar la app y usa esa respuesta para: poblar el selector de países, mostrar la descripción del formato de documento y construir los filtros de la tabla.
+
+### Agregar un país nuevo
+
+1. Crea la entrada en la BD desde el Admin (`/admin/applications/country/`) o añadela a `backend/fixtures/countries.json`.
+2. Crea su clase `XYZCountryValidator` en `backend/common/applications/countries/` con las reglas de validación del documento y las reglas financieras.
+3. Registra el validator en `backend/common/applications/countries/registry.py`.
+
+No se requiere ningún cambio en el frontend.
+
+### Por qué esta decisión
+
+- **Sin duplicación**: antes, los nombres y formatos de países estaban hardcodeados en 5 lugares del frontend y en el backend. Cualquier cambio requería desplegar ambos lados.
+- **Editable sin deploy**: labels, hints y ejemplos son datos, no código. Un admin puede ajustarlos en caliente.
+- **Sin costo en rendimiento**: el cache Redis sirve la metadata sin queries a BD en condiciones normales. Si Redis no está disponible, `IGNORE_EXCEPTIONS: True` hace que las operaciones fallen silenciosamente y el sistema siga funcionando (con queries directas a BD como fallback).
 
 ---
 
