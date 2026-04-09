@@ -7,9 +7,9 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 | Capa | Tecnología |
 |---|---|
 | **Frontend** | Vite 8 + React 19 + TypeScript + Tailwind v4 + shadcn/ui |
-| **Backend** | Django 6 + Django REST Framework + SimpleJWT |
-| **Tareas async** | Celery + Redis |
-| **Base de datos** | PostgreSQL (Docker) / SQLite (dev local) |
+| **Backend** | Django 6 + Django REST Framework + SimpleJWT + Whitenoise |
+| **Tareas async** | Celery (2 workers × concurrency 2) + Redis |
+| **Base de datos** | PostgreSQL 16 (Docker) / SQLite (dev local) |
 | **Contenedores** | Docker Compose |
 
 ---
@@ -18,7 +18,7 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 
 ### Docker — stack completo (recomendado)
 
-Levanta todos los servicios: PostgreSQL, Redis, Django API (Gunicorn), Celery Worker y el frontend servido por Nginx.
+Levanta todos los servicios: PostgreSQL, Redis, Django API (Gunicorn + Whitenoise), 2 Celery Workers y el frontend servido por Nginx.
 
 **Prerrequisitos:** Docker + Docker Compose instalados.
 
@@ -31,13 +31,38 @@ cp backend/.env.example backend/.env.docker
 docker compose up --build
 ```
 
-| Servicio | URL |
-|---|---|
-| Frontend + API (via Nginx) | http://localhost:3000 |
-| Admin panel | http://localhost:3000/api/admin → redirige a Django |
+**URLs disponibles:**
 
-> El primer arranque aplica migraciones y carga el usuario admin automáticamente.
+| Recurso | URL |
+|---|---|
+| Aplicación (frontend) | http://localhost:3000 |
+| Django Admin | http://localhost:3000/admin/ |
+| API REST | http://localhost:3000/api/ |
+
+> El primer arranque aplica migraciones, carga el usuario admin y recolecta los archivos estáticos automáticamente.
 > Credenciales del admin: `admin@dev.local` / `admin123`
+
+**Servicios del stack:**
+
+| Contenedor | Rol | Puerto host |
+|---|---|---|
+| `frontend` | Nginx — SPA React + proxy `/api/` `/admin/` `/static/` | 3000 |
+| `api` | Django + Gunicorn + Whitenoise | — (interno 8000) |
+| `celery_worker` | 2 réplicas × concurrency 2 = 4 procesos | — |
+| `redis` | Broker Celery + caché | 6379 |
+| `postgres` | PostgreSQL 16 | 5433 |
+
+> Redis (6379) y PostgreSQL (5433) están expuestos al host para conectarse con herramientas externas (DataGrip, redis-cli, etc.)
+
+**Conexión a bases de datos desde el host:**
+
+| | PostgreSQL | Redis |
+|---|---|---|
+| Host | `localhost` | `localhost` |
+| Puerto | `5433` | `6379` |
+| Base de datos | `bravo` | — |
+| Usuario | `bravo` | — |
+| Contraseña | `bravo` | — |
 
 **Comandos útiles:**
 
@@ -56,16 +81,6 @@ docker compose down
 docker compose down -v
 ```
 
-**Servicios internos:**
-
-| Contenedor | Rol | Puerto interno |
-|---|---|---|
-| `postgres` | Base de datos PostgreSQL 16 | 5432 |
-| `redis` | Broker Celery + caché | 6379 |
-| `api` | Django + Gunicorn | 8000 |
-| `celery_worker` | Celery worker | — |
-| `frontend` | Nginx (SPA + proxy `/api/`) | 80 → host 3000 |
-
 ---
 
 ### Dev local — sin Docker
@@ -83,6 +98,7 @@ bash gen.sh
 # Servidor de desarrollo
 uv run backend/manage.py runserver
 # → http://localhost:8000
+# → Admin: http://localhost:8000/admin/
 ```
 
 #### Frontend
@@ -100,6 +116,7 @@ SECRET_KEY=dev-secret
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000
 CELERY_BROKER_URL=redis://localhost:6379/0
 ```
 
@@ -117,7 +134,7 @@ bravo-test/
 │   ├── applications/      # Solicitudes de crédito (CRUD)
 │   ├── fixtures/          # Datos iniciales (admin)
 │   ├── Dockerfile
-│   └── entrypoint.sh
+│   └── entrypoint.sh      # migrate → loaddata → collectstatic → gunicorn
 ├── frontend/              # Vite + React
 │   ├── src/
 │   │   ├── features/auth/ # Login, signup
@@ -125,7 +142,7 @@ bravo-test/
 │   │   └── app/           # Router, páginas
 │   ├── e2e/               # Tests Playwright
 │   ├── Dockerfile
-│   └── nginx.conf
+│   └── nginx.conf         # SPA + proxy /api/ /admin/ /static/
 ├── docs/
 │   ├── arquitecture/      # Diagrama de arquitectura
 │   ├── database/          # ERD

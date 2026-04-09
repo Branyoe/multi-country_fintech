@@ -2,21 +2,21 @@ flowchart TD
 
     USER(["Usuario — Navegador"])
 
-    subgraph docker["Docker Compose / Kubernetes cluster"]
+    subgraph docker["Docker Compose"]
 
-        subgraph fe_layer["Frontend"]
-            NG["Nginx — puerto 3000 — SPA + proxy /api/"]
+        subgraph fe_layer["Frontend — puerto 3000"]
+            NG["Nginx — SPA React — proxy /api/ /admin/ /static/"]
         end
 
         subgraph api_layer["Backend"]
-            API["Django REST API — Gunicorn — JWT · Strategy por país"]
-            CL["Celery Worker — Riesgo · Auditoría · Webhooks"]
+            API["Django REST API — Gunicorn — JWT · Strategy por país · Whitenoise"]
+            CL["Celery Worker x2 — Riesgo · Auditoría · Webhooks"]
             CH["Django Channels — WebSockets realtime (futuro)"]
         end
 
         subgraph data_layer["Datos"]
-            RD["Redis — Broker Celery · caché · channel layer"]
-            PG["PostgreSQL — Triggers · Índices · Particionamiento"]
+            RD["Redis — puerto 6379 — Broker Celery · caché · channel layer"]
+            PG["PostgreSQL 16 — puerto 5433 — Triggers · Índices · Particionamiento"]
         end
 
     end
@@ -27,8 +27,10 @@ flowchart TD
     end
 
     USER --> NG
+    NG -- "/api/ proxy" --> API
+    NG -- "/admin/ proxy" --> API
+    NG -- "/static/ proxy — Whitenoise" --> API
     NG -- "GET / — SPA estático" --> NG
-    NG -- "POST /api/ — proxy" --> API
     API --> PG
     API --> RD
     API --> BK
