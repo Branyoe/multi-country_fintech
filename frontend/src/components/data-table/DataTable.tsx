@@ -241,7 +241,7 @@ export function DataTable<TData>({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-3 items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2 items-center">
           {enableSearch && (
             <div className="relative w-64 max-w-xs">
@@ -383,7 +383,7 @@ export function DataTable<TData>({
           })}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:ml-auto">
           <span className="text-sm text-muted-foreground">
             Filas por página
           </span>
@@ -411,7 +411,7 @@ export function DataTable<TData>({
         </div>
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-md border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
