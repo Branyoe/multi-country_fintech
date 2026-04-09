@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -14,10 +15,10 @@ class BankData:
 class BaseCountryValidator(ABC):
 
     @abstractmethod
-    def get_document_type(self) -> str: ...
+    def get_country_code(self) -> str: ...
 
     @abstractmethod
-    def validate_document(self, document: str) -> tuple[bool, str]: ...
+    def get_document_type(self) -> str: ...
 
     @abstractmethod
     def fetch_bank_data(self, document: str) -> BankData: ...
@@ -31,6 +32,15 @@ class BaseCountryValidator(ABC):
         or 'non_field_errors' for cross-field / external-data errors.
         """
         ...
+
+    def validate_document(self, document: str) -> tuple[bool, str]:
+        from applications.cache import get_countries_cached
+        meta = get_countries_cached().get(self.get_country_code())
+        if meta is None:
+            return False, 'País no configurado'
+        if not re.match(meta.document_regex, document.strip().upper()):
+            return False, meta.document_hint
+        return True, ''
 
     def get_initial_status(self) -> str:
         return 'pending'

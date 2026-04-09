@@ -1,19 +1,13 @@
-import re
 from .base import BaseCountryValidator, BankData
-
-_CURP_RE = re.compile(r'^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$')
 
 
 class MXCountryValidator(BaseCountryValidator):
 
+    def get_country_code(self) -> str:
+        return 'MX'
+
     def get_document_type(self) -> str:
         return 'CURP'
-
-    def validate_document(self, document: str) -> tuple[bool, str]:
-        normalized = document.strip().upper()
-        if not _CURP_RE.match(normalized):
-            return False, 'Formato de CURP incorrecto'
-        return True, ''
 
     def fetch_bank_data(self, document: str) -> BankData:
         return BankData(

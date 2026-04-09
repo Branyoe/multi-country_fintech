@@ -1,18 +1,13 @@
-import re
 from .base import BaseCountryValidator, BankData
-
-_CC_RE = re.compile(r'^\d{6,10}$')
 
 
 class COCountryValidator(BaseCountryValidator):
 
+    def get_country_code(self) -> str:
+        return 'CO'
+
     def get_document_type(self) -> str:
         return 'CC'
-
-    def validate_document(self, document: str) -> tuple[bool, str]:
-        if not _CC_RE.match(document.strip()):
-            return False, 'La cédula debe tener entre 6 y 10 dígitos'
-        return True, ''
 
     def fetch_bank_data(self, document: str) -> BankData:
         return BankData(
@@ -21,9 +16,9 @@ class COCountryValidator(BaseCountryValidator):
             total_debt=2000.0,
             credit_score=None,
             raw_response={
-                'cc':         document.strip(),
+                'cc':          document.strip(),
                 'deuda_total': 2000.0,
-                'estado':     'activo',
+                'estado':      'activo',
             },
         )
 
