@@ -8,97 +8,133 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 |---|---|
 | **Frontend** | Vite 8 + React 19 + TypeScript + Tailwind v4 + shadcn/ui |
 | **Backend** | Django 6 + Django REST Framework + SimpleJWT + Whitenoise |
-| **Tareas async** | Celery (2 workers × concurrency 2) + Redis |
-| **Base de datos** | PostgreSQL 16 (Docker) / SQLite (dev local) |
-| **Contenedores** | Docker Compose |
+| **Tareas async** | Celery (workers) + Redis |
+| **Base de datos** | PostgreSQL 16 (Docker) / SQLite (dev local sin Docker) |
+| **Contenedores** | Docker Compose + Make |
 
 ---
 
-## Modos de desarrollo
+## Entornos Docker
 
-### Docker — stack completo (recomendado)
+El proyecto tiene dos configuraciones Docker:
 
-Levanta todos los servicios: PostgreSQL, Redis, Django API (Gunicorn + Whitenoise), 2 Celery Workers y el frontend servido por Nginx.
+| | **Dev** (`docker-compose.dev.yml`) | **Prod** (`docker-compose.prod.yml`) |
+|---|---|---|
+| Backend server | Django `runserver` + auto-reload | Gunicorn (2 workers) |
+| Frontend | Vite dev server + HMR | Nginx sirviendo build estático |
+| Static files | Django debug | Whitenoise vía Gunicorn |
+| Hot-reload | Sí (backend + frontend) | No |
+| Celery workers | 1 réplica | 2 réplicas |
+| Base de datos | `bravo_dev` | `bravo` |
 
-**Prerrequisitos:** Docker + Docker Compose instalados.
+> No levantar ambos entornos simultáneamente — comparten los mismos puertos.
+
+---
+
+## Desarrollo con Docker (recomendado)
+
+Todos los servicios corren en contenedores con hot-reload: los cambios de código se reflejan instantáneamente sin reconstruir imágenes.
+
+**Prerrequisitos:** Docker Desktop + `make`.
 
 ```bash
-# 1. Copiar variables de entorno para Docker
-cp backend/.env.example backend/.env.docker
-# Editar backend/.env.docker si querés cambiar credenciales
+# 1. Copiar variables de entorno para dev
+cp backend/.env.example backend/.env.dev
+
+# 2. Construir imágenes (solo la primera vez o al cambiar deps)
+make dev-build
+
+# 3. Levantar el entorno
+make dev
+```
+
+**Accesos:**
+
+| Servicio | URL |
+|---|---|
+| Frontend (HMR) | http://localhost:3000 |
+| API directa | http://localhost:8000/api/ |
+| Django Admin | http://localhost:8000/admin/ |
+| PostgreSQL | `localhost:5432` — DB: `bravo_dev`, user/pass: `bravo/bravo` |
+| Redis | `localhost:6379` |
+
+**Crear superusuario:**
+
+```bash
+docker compose -f docker-compose.dev.yml exec api python manage.py createsuperuser
+```
+
+**Hot-reload:**
+
+| Servicio | Comportamiento |
+|---|---|
+| Backend | `runserver` detecta cambios en `.py` y recarga automáticamente |
+| Frontend | Vite HMR actualiza el browser sin recargar la página |
+| Celery | Requiere reinicio manual: `docker compose -f docker-compose.dev.yml restart celery_worker` |
+
+---
+
+## Producción local con Docker
+
+Simula el entorno productivo: Gunicorn + Nginx, imágenes compiladas, sin hot-reload.
+
+```bash
+# 1. Copiar variables de entorno
+cp backend/.env.example backend/.env.prod
 
 # 2. Construir y levantar
-docker compose up --build
+make prod-build
+make prod
 ```
 
-**URLs disponibles:**
+**Accesos:**
 
-| Recurso | URL |
+| Servicio | URL |
 |---|---|
-| Aplicación (frontend) | http://localhost:3000 |
+| Frontend (Nginx) | http://localhost:3000 |
 | Django Admin | http://localhost:3000/admin/ |
-| API REST | http://localhost:3000/api/ |
+| PostgreSQL | `localhost:5432` — DB: `bravo`, user/pass: `bravo/bravo` |
+| Redis | `localhost:6379` |
 
-> El primer arranque aplica migraciones, carga el usuario admin y recolecta los archivos estáticos automáticamente.
-> Credenciales del admin: `admin@dev.local` / `admin123`
+> El primer arranque aplica migraciones, carga el usuario admin (`admin@dev.local` / `admin123`) y recolecta los archivos estáticos automáticamente.
 
-**Servicios del stack:**
+---
 
-| Contenedor | Rol | Puerto host |
-|---|---|---|
-| `frontend` | Nginx — SPA React + proxy `/api/` `/admin/` `/static/` | 3000 |
-| `api` | Django + Gunicorn + Whitenoise | — (interno 8000) |
-| `celery_worker` | 2 réplicas × concurrency 2 = 4 procesos | — |
-| `redis` | Broker Celery + caché | 6379 |
-| `postgres` | PostgreSQL 16 | 5433 |
-
-> Redis (6379) y PostgreSQL (5433) están expuestos al host para conectarse con herramientas externas (DataGrip, redis-cli, etc.)
-
-**Conexión a bases de datos desde el host:**
-
-| | PostgreSQL | Redis |
-|---|---|---|
-| Host | `localhost` | `localhost` |
-| Puerto | `5433` | `6379` |
-| Base de datos | `bravo` | — |
-| Usuario | `bravo` | — |
-| Contraseña | `bravo` | — |
-
-**Comandos útiles:**
+## Comandos Make
 
 ```bash
-# Levantar en background
-docker compose up -d --build
+# ── Dev ──────────────────────────────────────────────────────────────────────
+make dev-build      # construir imágenes dev (primera vez o al cambiar deps)
+make dev            # levantar entorno dev con hot-reload
+make dev-down       # detener entorno dev
+make dev-clean      # detener + eliminar volúmenes dev (reset BD)
+make logs-dev       # seguir logs del entorno dev
 
-# Ver logs de un servicio
-docker compose logs -f api
-docker compose logs -f celery_worker
-
-# Parar todo
-docker compose down
-
-# Parar y borrar volúmenes (reset completo de base de datos)
-docker compose down -v
+# ── Prod ─────────────────────────────────────────────────────────────────────
+make prod-build     # construir imágenes prod
+make prod           # levantar entorno prod
+make prod-down      # detener entorno prod
+make prod-clean     # detener + eliminar volúmenes prod (reset BD)
+make logs-prod      # seguir logs del entorno prod
 ```
 
 ---
 
-### Dev local — sin Docker
+## Dev local — sin Docker
 
-Para desarrollo rápido con hot-reload. Usa SQLite en lugar de PostgreSQL.
+Para desarrollo ultra-rápido con SQLite y sin contenedores.
 
 **Prerrequisitos:** Python 3.13+, [uv](https://docs.astral.sh/uv/getting-started/installation/), Node 22+.
 
 #### Backend
 
 ```bash
-# Primera vez: inicializar todo (dependencias + migraciones + fixtures)
+# Primera vez: dependencias + migraciones + fixtures
 bash gen.sh
 
 # Servidor de desarrollo
 uv run backend/manage.py runserver
 # → http://localhost:8000
-# → Admin: http://localhost:8000/admin/
 ```
 
 #### Frontend
@@ -110,7 +146,9 @@ npm run dev
 # → http://localhost:3000
 ```
 
-**Variables de entorno backend** (`backend/.env`):
+El proxy de Vite (`/api/`, `/admin/`, `/static/`) apunta a `http://localhost:8000` por defecto.
+
+**Variables de entorno** (`backend/.env`):
 ```env
 SECRET_KEY=dev-secret
 DEBUG=True
@@ -120,7 +158,46 @@ CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000
 CELERY_BROKER_URL=redis://localhost:6379/0
 ```
 
-> Sin Docker, Celery requiere Redis corriendo localmente. Si no lo necesitás, podés ignorar `CELERY_BROKER_URL` — Django arranca igual.
+---
+
+## Tests
+
+### Backend (pytest)
+
+```bash
+uv run pytest -v
+uv run pytest applications/tests/ -v
+uv run pytest users/tests/ -v
+```
+
+### Frontend — E2E (Playwright)
+
+Requiere el backend corriendo en `:8000`.
+
+```bash
+cd frontend
+npm run test:e2e
+npm run test:e2e:ui   # modo UI interactivo
+```
+
+---
+
+## API — endpoints principales
+
+Base URL (Docker dev): `http://localhost:8000/api/`
+Base URL (Docker prod): `http://localhost:3000/api/`
+
+| Método | Endpoint | Auth | Descripción |
+|---|---|---|---|
+| POST | `/auth/signup/` | Libre | Registro |
+| POST | `/auth/token/` | Libre | Login → access + refresh |
+| POST | `/auth/token/refresh/` | Libre | Renovar access token |
+| GET | `/applications/` | Bearer | Listar solicitudes |
+| POST | `/applications/` | Bearer | Crear solicitud |
+| GET | `/applications/{id}/` | Bearer | Detalle |
+| PATCH | `/applications/{id}/` | Bearer | Actualizar estado |
+
+Header: `Authorization: Bearer <access_token>`
 
 ---
 
@@ -132,71 +209,30 @@ bravo-test/
 │   ├── config/            # Settings, URLs, Celery
 │   ├── users/             # Auth (JWT, signup, login)
 │   ├── applications/      # Solicitudes de crédito (CRUD)
+│   ├── common/            # Código compartido (validators por país)
 │   ├── fixtures/          # Datos iniciales (admin)
-│   ├── Dockerfile
-│   └── entrypoint.sh      # migrate → loaddata → collectstatic → gunicorn
+│   ├── Dockerfile.prod    # Imagen producción (multi-stage)
+│   ├── Dockerfile.dev     # Imagen desarrollo (deps only, sin código)
+│   ├── entrypoint.prod.sh # migrate → loaddata → collectstatic → gunicorn
+│   ├── .env.example       # Plantilla de variables de entorno
+│   ├── .env.prod        # Config para prod Docker (no commitear)
+│   └── .env.dev           # Config para dev Docker (no commitear)
 ├── frontend/              # Vite + React
 │   ├── src/
-│   │   ├── features/auth/ # Login, signup
-│   │   ├── lib/           # api.ts (axios), bootstrap.ts, store
-│   │   └── app/           # Router, páginas
+│   │   ├── features/      # auth, applications
+│   │   ├── components/    # ui, data-table
+│   │   ├── lib/           # api.ts (axios), bootstrap.ts
+│   │   └── app/           # router, páginas
 │   ├── e2e/               # Tests Playwright
-│   ├── Dockerfile
-│   └── nginx.conf         # SPA + proxy /api/ /admin/ /static/
+│   ├── Dockerfile.prod    # Imagen producción (build + Nginx)
+│   ├── Dockerfile.dev     # Imagen desarrollo (node_modules only)
+│   └── nginx.prod.conf    # SPA + proxy /api/ /admin/ /static/
 ├── docs/
-│   ├── arquitecture/      # Diagrama de arquitectura
-│   ├── database/          # ERD
-│   └── flows/             # Flujos auth, crédito
-├── docker-compose.yml
-└── gen.sh                 # Script de inicialización local
+│   ├── arquitecture/      # Diagrama de arquitectura (.mmd)
+│   ├── database/          # ERD — fuente de verdad del esquema
+│   └── flows/             # Flujos auth, solicitud de crédito
+├── docker-compose.prod.yml     # Orquestación producción
+├── docker-compose.dev.yml # Orquestación desarrollo (hot-reload)
+├── Makefile               # Shortcuts: make dev / make prod
+└── CLAUDE.md              # Instrucciones para el asistente IA
 ```
-
----
-
-## Tests
-
-### Backend (pytest)
-
-```bash
-cd backend
-
-# Todos los tests
-uv run pytest -v
-
-# Por app
-uv run pytest users/tests/ -v
-uv run pytest applications/tests/ -v
-```
-
-### Frontend — E2E (Playwright)
-
-Requiere el backend corriendo en `:8000`.
-
-```bash
-cd frontend
-
-# Correr tests headless
-npm run test:e2e
-
-# Modo UI interactivo
-npm run test:e2e:ui
-```
-
----
-
-## API — endpoints principales
-
-Base URL (Docker): `http://localhost:3000/api/`
-Base URL (dev local): `http://localhost:8000/api/`
-
-| Método | Endpoint | Auth | Descripción |
-|---|---|---|---|
-| POST | `/auth/signup/` | Libre | Registro |
-| POST | `/auth/token/` | Libre | Login → access + refresh |
-| POST | `/auth/token/refresh/` | Libre | Renovar access token |
-| GET | `/applications/` | Bearer | Listar mis solicitudes |
-| POST | `/applications/` | Bearer | Crear solicitud |
-| GET | `/applications/{id}/` | Bearer | Detalle |
-| PATCH | `/applications/{id}/` | Bearer | Actualizar estado |
-
-Header de autenticación: `Authorization: Bearer <access_token>`

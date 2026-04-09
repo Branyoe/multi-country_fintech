@@ -11,7 +11,8 @@ wheels/
 
 # Environment variables
 .env
-.env.docker
+.env.prod
+.env.dev
 
 # Django
 db.sqlite3
