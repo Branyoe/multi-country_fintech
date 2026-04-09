@@ -15,7 +15,8 @@ function requireAuth({ request }: LoaderFunctionArgs) {
   return null
 }
 
-export const router = createBrowserRouter([
+export function createRouter() {
+  return createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
@@ -31,4 +32,5 @@ export const router = createBrowserRouter([
     loader: requireAuth,
     element: <HomePage />,
   },
-])
+  ])
+}
