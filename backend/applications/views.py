@@ -1,5 +1,7 @@
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, viewsets, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from .models import CreditApplication
 from .serializers import (
@@ -7,10 +9,10 @@ from .serializers import (
     CreditApplicationStatusSerializer,
     CreditApplicationReadSerializer,
 )
+from .services import CreditApplicationService, BankProviderError
 
 
 class CreditApplicationViewSet(
-    mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.ListModelMixin,
@@ -32,3 +34,34 @@ class CreditApplicationViewSet(
         if self.action in ('retrieve', 'list'):
             return CreditApplicationReadSerializer
         return CreditApplicationSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            application = CreditApplicationService.create(
+                serializer.validated_data, request.user
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        except BankProviderError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(
+            CreditApplicationReadSerializer(application).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        application = self.get_object()
+        serializer = CreditApplicationStatusSerializer(
+            application, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        application = CreditApplicationService.update_status(
+            str(application.id),
+            serializer.validated_data['status'],
+            request.user.email,
+        )
+        return Response(CreditApplicationReadSerializer(application).data)
