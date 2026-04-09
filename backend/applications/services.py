@@ -36,14 +36,14 @@ class CreditApplicationService:
         try:
             bank_data = validator.fetch_bank_data(document)
         except Exception as exc:
-            raise BankProviderError(f'Error al consultar proveedor bancario: {exc}') from exc
+            raise BankProviderError('No se pudo consultar el proveedor bancario') from exc
 
         # 4. Validar reglas financieras del país
         amount = float(data['amount_requested'])
         income = float(data['monthly_income'])
-        valid, error_msg = validator.validate_financial_rules(amount, income, bank_data)
+        valid, error_msg, error_field = validator.validate_financial_rules(amount, income, bank_data)
         if not valid:
-            raise ValidationError({'non_field_errors': error_msg})
+            raise ValidationError({error_field: error_msg})
 
         # 5. Persistir solicitud
         application = CreditApplication.objects.create(

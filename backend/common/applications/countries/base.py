@@ -25,7 +25,12 @@ class BaseCountryValidator(ABC):
     @abstractmethod
     def validate_financial_rules(
         self, amount: float, income: float, bank_data: BankData
-    ) -> tuple[bool, str]: ...
+    ) -> tuple[bool, str, str]:
+        """Returns (valid, message, error_field).
+        error_field is the serializer field name to attach the error to,
+        or 'non_field_errors' for cross-field / external-data errors.
+        """
+        ...
 
     def get_initial_status(self) -> str:
         return 'pending'

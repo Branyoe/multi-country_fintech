@@ -11,7 +11,7 @@ class COCountryValidator(BaseCountryValidator):
 
     def validate_document(self, document: str) -> tuple[bool, str]:
         if not _CC_RE.match(document.strip()):
-            return False, 'Cédula inválida — debe tener entre 6 y 10 dígitos'
+            return False, 'La cédula debe tener entre 6 y 10 dígitos'
         return True, ''
 
     def fetch_bank_data(self, document: str) -> BankData:
@@ -29,10 +29,10 @@ class COCountryValidator(BaseCountryValidator):
 
     def validate_financial_rules(
         self, amount: float, income: float, bank_data: BankData
-    ) -> tuple[bool, str]:
+    ) -> tuple[bool, str, str]:
         if bank_data.total_debt is not None and bank_data.total_debt > income * 0.4:
-            return False, 'Deuda total supera el 40% del ingreso mensual'
-        return True, ''
+            return False, 'Tu deuda registrada supera el 40% del ingreso mensual', 'non_field_errors'
+        return True, '', ''
 
     def get_validation_rules(self) -> list[str]:
         return ['cc_format', 'deuda_40pct_ingreso']

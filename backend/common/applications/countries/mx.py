@@ -12,7 +12,7 @@ class MXCountryValidator(BaseCountryValidator):
     def validate_document(self, document: str) -> tuple[bool, str]:
         normalized = document.strip().upper()
         if not _CURP_RE.match(normalized):
-            return False, 'CURP inválida — formato incorrecto'
+            return False, 'Formato de CURP incorrecto'
         return True, ''
 
     def fetch_bank_data(self, document: str) -> BankData:
@@ -30,10 +30,10 @@ class MXCountryValidator(BaseCountryValidator):
 
     def validate_financial_rules(
         self, amount: float, income: float, bank_data: BankData
-    ) -> tuple[bool, str]:
+    ) -> tuple[bool, str, str]:
         if amount > income * 5:
-            return False, 'Monto supera 5 veces el ingreso mensual'
-        return True, ''
+            return False, 'El monto supera el límite permitido (máx. 5× el ingreso mensual)', 'amount_requested'
+        return True, '', ''
 
     def get_validation_rules(self) -> list[str]:
         return ['curp_format', 'monto_5x_ingreso']
