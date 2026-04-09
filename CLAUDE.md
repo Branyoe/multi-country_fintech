@@ -81,6 +81,8 @@ Archivos env: `backend/.env.dev` (dev) · `backend/.env.prod` (prod).
 - shadcn components en `src/components/ui/` — importar desde `~/components/ui/`
 
 ## Commits
+**No hacer commits sin que el usuario lo indique explícitamente.**
+
 Formato: `<type>(<scope>): <descripción>`
 Scopes: `frontend` · `backend` · `docker` · `docs` · `config`
 Ejemplos:
