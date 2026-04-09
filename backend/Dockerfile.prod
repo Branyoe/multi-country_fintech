@@ -14,7 +14,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 COPY . .
 
-RUN chmod +x entrypoint.sh
+RUN chmod +x entrypoint.prod.sh
 
 EXPOSE 8000
-CMD ["./entrypoint.sh"]
+CMD ["./entrypoint.prod.sh"]
