@@ -1,5 +1,14 @@
 export type ApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected'
-export type ApplicationCountry = 'MX' | 'CO'
+export type ApplicationCountry = string
+
+export interface CountryMeta {
+  code: string
+  label: string
+  document_type: string
+  document_hint: string
+  document_example: string
+  document_regex: string
+}
 
 export interface CreditApplication {
   id: string

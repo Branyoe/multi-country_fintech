@@ -21,10 +21,6 @@ const STATUS_VARIANTS: Record<
   rejected: 'destructive',
 }
 
-const COUNTRY_LABELS: Record<string, string> = {
-  MX: 'México',
-  CO: 'Colombia',
-}
 
 function formatCurrency(value: string) {
   return new Intl.NumberFormat('es-MX', {
@@ -42,7 +38,10 @@ function formatDate(iso: string) {
   })
 }
 
-export const applicationColumns: ColumnDef<CreditApplication, unknown>[] = [
+export function createApplicationColumns(
+  countryMap: Record<string, string>,
+): ColumnDef<CreditApplication, unknown>[] {
+  return [
   {
     accessorKey: 'full_name',
     header: 'Solicitante',
@@ -54,7 +53,7 @@ export const applicationColumns: ColumnDef<CreditApplication, unknown>[] = [
       const val = getValue() as ApplicationCountry
       return (
         <Badge variant="outline" className="font-mono text-xs">
-          {val} · {COUNTRY_LABELS[val] ?? val}
+          {val} · {countryMap[val] ?? val}
         </Badge>
       )
     },
@@ -99,4 +98,5 @@ export const applicationColumns: ColumnDef<CreditApplication, unknown>[] = [
     meta: { orderingKey: 'requested_at' },
     cell: ({ getValue }: Cell) => formatDate(getValue() as string),
   },
-]
+  ]
+}
