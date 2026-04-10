@@ -3,7 +3,8 @@ from django.test import Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 
-from applications.models import ApplicationStatusHistory, BankProviderData, CountryValidation
+from countries.models import CountryValidation
+from applications.models import ApplicationStatusHistory, BankProviderData
 
 User = get_user_model()
 

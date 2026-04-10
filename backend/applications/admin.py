@@ -1,9 +1,8 @@
 from django.contrib import admin
+from countries.models import CountryValidation
 from .models import (
     ApplicationStatusHistory,
     BankProviderData,
-    Country,
-    CountryValidation,
     CreditApplication,
 )
 
@@ -58,13 +57,6 @@ class BankProviderDataAdmin(admin.ModelAdmin):
     readonly_fields = ('id', 'fetched_at')
 
 
-@admin.register(CountryValidation)
-class CountryValidationAdmin(admin.ModelAdmin):
-    list_display  = ('id', 'application', 'rule_name', 'passed', 'detail', 'evaluated_at')
-    list_filter   = ('passed', 'rule_name')
-    readonly_fields = ('id', 'evaluated_at')
-
-
 @admin.register(ApplicationStatusHistory)
 class ApplicationStatusHistoryAdmin(admin.ModelAdmin):
     list_display  = ('id', 'application', 'from_status', 'to_status', 'changed_by', 'changed_at')
@@ -72,8 +64,3 @@ class ApplicationStatusHistoryAdmin(admin.ModelAdmin):
     readonly_fields = ('id', 'changed_at')
 
 
-@admin.register(Country)
-class CountryAdmin(admin.ModelAdmin):
-    list_display  = ('code', 'label', 'document_type', 'is_active')
-    list_editable = ('is_active',)
-    search_fields = ('code', 'label')
