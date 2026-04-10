@@ -18,6 +18,10 @@ class CountryListView(APIView):
                 'document_hint': c.document_hint,
                 'document_example': c.document_example,
                 'document_regex': c.document_regex,
+                'statuses': [
+                    {'code': s.code, 'label': s.label, 'is_terminal': s.is_terminal, 'order': s.order}
+                    for s in c.statuses.order_by('order')
+                ],
             }
             for c in countries
         ]

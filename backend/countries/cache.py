@@ -32,7 +32,7 @@ def get_countries_cached() -> dict:
     if data is None:
         _warn_cache_unavailable_once()
         from .models import Country
-        data = {c.code: c for c in Country.objects.filter(is_active=True)}
+        data = {c.code: c for c in Country.objects.filter(is_active=True).prefetch_related('statuses')}
         cache.set(CACHE_KEY, data, timeout=None)
     return data
 
