@@ -96,7 +96,7 @@ make prod
 | PostgreSQL | `localhost:5432` — DB: `bravo`, user/pass: `bravo/bravo` |
 | Redis | `localhost:6379` |
 
-> El primer arranque aplica migraciones, carga el usuario admin (`admin@dev.local` / `admin123`) y recolecta los archivos estáticos automáticamente.
+> El primer arranque aplica migraciones, carga los usuarios de fixtures (`admin@dev.local` y `user@dev.local`) y recolecta los archivos estáticos automáticamente.
 
 ---
 
@@ -189,16 +189,57 @@ Base URL (Docker prod): `http://localhost:3000/api/`
 
 | Método | Endpoint | Auth | Descripción |
 |---|---|---|---|
-| POST | `/auth/signup/` | Libre | Registro |
+| POST | `/auth/signup/` | Libre | Registro (siempre crea rol `user`) |
 | POST | `/auth/token/` | Libre | Login → access + refresh |
 | POST | `/auth/token/refresh/` | Libre | Renovar access token |
+| GET | `/auth/me/` | Bearer | Perfil del usuario autenticado |
 | GET | `/applications/` | Bearer | Listar solicitudes |
 | POST | `/applications/` | Bearer | Crear solicitud |
 | GET | `/applications/{id}/` | Bearer | Detalle |
 | PATCH | `/applications/{id}/` | Bearer | Actualizar estado |
-| GET | `/applications/countries/` | Libre | Metadata de países disponibles |
+| GET | `/countries/` | Libre | Metadata de países disponibles |
 
 Header: `Authorization: Bearer <access_token>`
+
+---
+
+## Usuarios y roles
+
+El sistema tiene dos roles: `user` (rol por defecto) y `admin`.
+
+### Diferencias de acceso
+
+| Capacidad | `user` | `admin` |
+|---|---|---|
+| Crear solicitudes | Sí | Sí |
+| Ver sus propias solicitudes | Sí | Sí |
+| Ver solicitudes de otros usuarios | No | Sí — ve todas |
+| Actualizar estado de cualquier solicitud | No | Sí |
+
+### Cómo se asigna el rol
+
+- **Signup público** (`POST /auth/signup/`): siempre crea un usuario con `role=user`. Aunque el payload incluya `role=admin`, el campo se ignora.
+- **Usuarios admin**: se crean únicamente por soporte, a través del Django Admin o directamente en base de datos.
+
+### Indicador de rol en el frontend
+
+El rol del usuario autenticado se muestra como una etiqueta junto al email en el header de la aplicación:
+
+- `Admin` — etiqueta oscura (variante `default`)
+- `Usuario` — etiqueta gris (variante `secondary`)
+
+El rol se obtiene del endpoint `GET /auth/me/` al arrancar la app, se persiste en el store de Zustand y no requiere peticiones adicionales durante la sesión.
+
+### Usuarios de fixtures (cargados en cada arranque)
+
+Tanto el entorno dev como prod cargan `backend/fixtures/users.json` al iniciar. Esto crea dos usuarios predefinidos si aún no existen:
+
+| Email | Contraseña | Rol |
+|---|---|---|
+| `admin@dev.local` | `admin123` | `admin` |
+| `user@dev.local` | `user1234` | `user` |
+
+> La carga es idempotente — si los usuarios ya existen, el comando falla silenciosamente sin afectar los datos existentes.
 
 ---
 
