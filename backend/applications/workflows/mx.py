@@ -10,14 +10,20 @@ class MexicoWorkflow(BaseWorkflow):
     def get_country_code(self) -> str:
         return 'MX'
 
+    def get_bootstrap_state(self) -> str:
+        return 'validating_document'
+
     def on_enter(self, state_code: str, application: CreditApplication) -> None:
         from applications.tasks import (
             fetching_bank_data_task,
             notify_final_decision_task,
             validate_country_rules_task,
+            validating_document_task,
         )
 
-        if state_code == 'fetching_bank_data':
+        if state_code == 'validating_document':
+            validating_document_task.delay(str(application.id))
+        elif state_code == 'fetching_bank_data':
             fetching_bank_data_task.delay(str(application.id))
         elif state_code == 'validate_country_rules':
             validate_country_rules_task.delay(str(application.id))

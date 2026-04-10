@@ -130,9 +130,10 @@ class CreditApplicationService:
         )
 
         # Activar flujo state-driven desde el primer estado de procesamiento.
+        workflow = get_workflow(country_code)
         CreditApplicationService.update_status(
             application_id=str(application.id),
-            new_status_code='fetching_bank_data',
+            new_status_code=workflow.get_bootstrap_state(),
             changed_by='system:create',
             metadata={'event': 'pipeline_started'},
         )
