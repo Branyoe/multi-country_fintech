@@ -1,8 +1,11 @@
 import pytest
+import json
 from unittest.mock import patch
+from urllib.error import URLError
 from django.test import Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from celery.exceptions import Retry
 
 from countries.models import Country, CountryValidation
 from applications.models import ApplicationStatusHistory, BankProviderData, CreditApplication
@@ -292,6 +295,102 @@ class TestTasks:
 
         app.refresh_from_db()
         assert app.status_code == 'validate_country_rules'
+
+    def test_notify_final_decision_sends_webhook(self, auth_client, settings):
+        app = self._create_app(auth_client)
+        settings.WEBHOOK_URL = 'https://example.com/webhook'
+        settings.WEBHOOK_TIMEOUT_SECONDS = 3
+
+        from applications.tasks import fetching_bank_data_task, validate_country_rules_task, notify_final_decision_task
+
+        with patch('applications.tasks.delay', return_value=None):
+            fetching_bank_data_task(str(app.id))
+            validate_country_rules_task(str(app.id))
+
+        app.refresh_from_db()
+        assert app.status_code == 'approved'
+
+        with patch('applications.tasks.delay', return_value=None):
+            with patch('applications.tasks.urlopen') as mock_urlopen:
+                notify_final_decision_task(str(app.id))
+
+        mock_urlopen.assert_called_once()
+        req = mock_urlopen.call_args.args[0]
+        timeout = mock_urlopen.call_args.kwargs['timeout']
+
+        assert req.full_url == 'https://example.com/webhook'
+        assert timeout == 3
+
+        payload = json.loads(req.data.decode('utf-8'))
+        assert payload['event'] == 'decision.finalized'
+        assert payload['application_id'] == str(app.id)
+        assert payload['status'] == 'approved'
+        assert payload['idempotency_key'] == f'final-decision:{app.id}:approved'
+
+    def test_notify_final_decision_skips_without_webhook_url(self, auth_client, settings):
+        app = self._create_app(auth_client)
+        settings.WEBHOOK_URL = ''
+
+        from applications.tasks import fetching_bank_data_task, validate_country_rules_task, notify_final_decision_task
+
+        with patch('applications.tasks.delay', return_value=None):
+            fetching_bank_data_task(str(app.id))
+            validate_country_rules_task(str(app.id))
+
+        with patch('applications.tasks.delay', return_value=None):
+            with patch('applications.tasks.urlopen') as mock_urlopen:
+                notify_final_decision_task(str(app.id))
+
+        mock_urlopen.assert_not_called()
+
+    def test_notify_final_decision_noop_non_terminal_status(self, auth_client, settings):
+        app = self._create_app(auth_client)
+        settings.WEBHOOK_URL = 'https://example.com/webhook'
+
+        from applications.tasks import notify_final_decision_task
+
+        with patch('applications.tasks.delay', return_value=None):
+            with patch('applications.tasks.urlopen') as mock_urlopen:
+                notify_final_decision_task(str(app.id))
+
+        mock_urlopen.assert_not_called()
+
+    def test_notify_final_decision_retries_on_webhook_error(self, auth_client, settings):
+        app = self._create_app(auth_client)
+        settings.WEBHOOK_URL = 'https://example.com/webhook'
+        settings.WEBHOOK_RETRY_COUNTDOWN_SECONDS = 42
+
+        from applications.tasks import fetching_bank_data_task, validate_country_rules_task, notify_final_decision_task
+
+        with patch('applications.tasks.delay', return_value=None):
+            fetching_bank_data_task(str(app.id))
+            validate_country_rules_task(str(app.id))
+
+        with patch('applications.tasks.delay', return_value=None):
+            with patch('applications.tasks.urlopen', side_effect=URLError('connection error')):
+                with patch.object(notify_final_decision_task, 'retry', side_effect=Retry()) as mock_retry:
+                    with pytest.raises(Retry):
+                        notify_final_decision_task(str(app.id))
+
+        mock_retry.assert_called_once()
+        assert mock_retry.call_args.kwargs['countdown'] == 42
+
+    def test_notify_final_decision_returns_when_retries_exhausted(self, auth_client, settings):
+        app = self._create_app(auth_client)
+        settings.WEBHOOK_URL = 'https://example.com/webhook'
+
+        from applications.tasks import fetching_bank_data_task, validate_country_rules_task, notify_final_decision_task
+
+        with patch('applications.tasks.delay', return_value=None):
+            fetching_bank_data_task(str(app.id))
+            validate_country_rules_task(str(app.id))
+
+        with patch('applications.tasks.delay', return_value=None):
+            with patch('applications.tasks.urlopen', side_effect=URLError('connection error')) as mock_urlopen:
+                with patch.object(notify_final_decision_task, 'max_retries', new=0):
+                    notify_final_decision_task(str(app.id))
+
+        mock_urlopen.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
