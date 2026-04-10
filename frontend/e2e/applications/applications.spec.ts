@@ -20,11 +20,16 @@ test('la página principal muestra el heading correcto', async ({ page }) => {
 })
 
 test('la tabla de solicitudes muestra columnas correctas', async ({ page }) => {
+  await expect(page.getByRole('columnheader', { name: /id/i })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /solicitante/i })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: /creada por/i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /tipo doc\./i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /documento/i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /monto solicitado/i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /ingreso mensual/i })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /país/i })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /estado/i })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: /fecha/i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /fecha-hora/i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /acciones/i })).toBeVisible()
 })
 
 test('botón nueva solicitud abre el dialog', async ({ page }) => {
@@ -39,7 +44,7 @@ test('dialog de nueva solicitud se cierra con Escape', async ({ page }) => {
   await expect(page.getByRole('dialog')).not.toBeVisible()
 })
 
-test('crear solicitud completa aparece en la tabla con email', async ({ page }) => {
+test('crear solicitud completa navega al detalle de la nueva solicitud', async ({ page }) => {
   await page.getByRole('button', { name: /nueva solicitud/i }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
 
@@ -59,11 +64,9 @@ test('crear solicitud completa aparece en la tabla con email', async ({ page }) 
 
   await page.getByRole('button', { name: /crear solicitud/i }).click()
 
-  // Wait for dialog to close
-  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 })
-
-  // The new row should appear with the admin email (use first() since multiple rows may exist)
-  await expect(page.getByRole('cell', { name: VALID_EMAIL }).first()).toBeVisible({ timeout: 5000 })
+  // Should navigate to detail view of the newly created application
+  await expect(page).toHaveURL(/\/applications\//)
+  await expect(page.getByRole('heading', { name: /solicitud/i })).toBeVisible({ timeout: 5000 })
 })
 
 test('usuario puede cerrar sesión con confirmación', async ({ page }) => {
