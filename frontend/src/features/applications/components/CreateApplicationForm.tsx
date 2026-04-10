@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PlusCircle } from 'lucide-react'
+import { useNavigate } from 'react-router'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -44,6 +45,7 @@ export function CreateApplicationForm() {
   const [open, setOpen] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { data: countries = [] } = useCountries()
 
   const {
@@ -71,11 +73,12 @@ export function CreateApplicationForm() {
 
   const mutation = useMutation({
     mutationFn: createApplication,
-    onSuccess: () => {
+    onSuccess: (createdApplication) => {
       queryClient.invalidateQueries({ queryKey: ['applications'] })
       setOpen(false)
       reset()
       setApiError(null)
+      navigate(`/applications/${createdApplication.id}`)
     },
     onError: (err: unknown) => {
       const nonFieldError = applyApiErrors(err, setError, [
