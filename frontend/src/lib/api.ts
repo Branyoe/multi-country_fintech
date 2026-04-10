@@ -4,10 +4,37 @@ import { useAuthStore } from '~/features/auth/store'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api'
 
-export const api = axios.create({ baseURL: BASE_URL })
+function serializeParams(params: Record<string, unknown>) {
+  const searchParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== undefined && item !== null && item !== '') {
+          searchParams.append(key, String(item))
+        }
+      })
+      return
+    }
+
+    searchParams.append(key, String(value))
+  })
+
+  return searchParams.toString()
+}
+
+export const api = axios.create({
+  baseURL: BASE_URL,
+  paramsSerializer: { serialize: serializeParams },
+})
 
 // Client sin interceptors para endpoints públicos (auth)
-export const publicApi = axios.create({ baseURL: BASE_URL })
+export const publicApi = axios.create({
+  baseURL: BASE_URL,
+  paramsSerializer: { serialize: serializeParams },
+})
 
 // Inject access token on every request
 api.interceptors.request.use((config) => {
