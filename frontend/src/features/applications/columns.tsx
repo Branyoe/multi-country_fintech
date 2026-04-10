@@ -7,18 +7,13 @@ import { cn } from '~/lib/utils'
 import type { CreditApplication, ApplicationCountry, ApplicationStatus, StatusMeta } from './types'
 
 type Cell = CellContext<CreditApplication, unknown>
-type BadgeVariant = 'secondary' | 'outline' | 'default' | 'destructive'
-
-const BADGE_VARIANTS: Record<string, BadgeVariant> = {
-  pending: 'secondary',
-  under_review: 'outline',
-  approved: 'default',
-  rejected: 'destructive',
-  verificacion_buro: 'outline',
-}
+type BadgeVariant = 'secondary' | 'outline' | 'default' | 'destructive' | 'status-approved' | 'status-rejected' | 'status-pending' | 'status-review'
 
 function statusVariant(code: string): BadgeVariant {
-  return BADGE_VARIANTS[code] ?? 'secondary'
+  if (code === 'approved') return 'status-approved'
+  if (code === 'rejected') return 'status-rejected'
+  if (code === 'created' || code === 'pending') return 'status-pending'
+  return 'status-review'
 }
 
 
@@ -47,6 +42,16 @@ export function createApplicationColumns(
     accessorKey: 'full_name',
     header: 'Solicitante',
     meta: { orderingKey: 'full_name' },
+  },
+  {
+    accessorKey: 'user_email',
+    header: 'Email',
+    meta: { orderingKey: 'user__email' },
+    cell: ({ getValue }: Cell) => (
+      <span className="text-muted-foreground text-sm font-mono">
+        {getValue() as string}
+      </span>
+    ),
   },
   {
     accessorKey: 'country',
