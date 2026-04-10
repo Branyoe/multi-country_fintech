@@ -45,6 +45,54 @@ def _send_webhook(url: str, payload: dict, timeout_seconds: int) -> int:
         return int(response.getcode() or 200)
 
 
+@shared_task(bind=True, max_retries=3, name='validating_document_task')
+def validating_document_task(self, application_id: str) -> None:
+    """Async document validation step (MX only): verify CURP against registry simulation."""
+    from .models import CreditApplication
+    from countries.validators.registry import get_validator
+    from .services import CreditApplicationService
+
+    try:
+        app = CreditApplication.objects.select_related('country_ref', 'status').get(id=application_id)
+    except CreditApplication.DoesNotExist:
+        return
+
+    if app.status_code != 'validating_document':
+        return
+
+    delay(random.randint(1, 3))
+
+    try:
+        validator = get_validator(app.country_ref.code)
+        valid, error_msg = validator.validate_document(app.document_number)
+    except Exception as exc:
+        if self.request.retries >= self.max_retries:
+            CreditApplicationService.update_status(
+                application_id=str(app.id),
+                new_status_code='technical_error',
+                changed_by='system:validating_document_task',
+                metadata={'task': 'validating_document_task', 'event': 'failed', 'reason': str(exc)},
+            )
+            return
+        raise self.retry(exc=exc, countdown=60)
+
+    if not valid:
+        CreditApplicationService.update_status(
+            application_id=str(app.id),
+            new_status_code='rejected',
+            changed_by='system:validating_document_task',
+            metadata={'task': 'validating_document_task', 'event': 'rejected', 'reason': error_msg},
+        )
+        return
+
+    CreditApplicationService.update_status(
+        application_id=str(app.id),
+        new_status_code='fetching_bank_data',
+        changed_by='system:validating_document_task:success',
+        metadata={'task': 'validating_document_task', 'event': 'success'},
+    )
+
+
 @shared_task(bind=True, max_retries=3, name='fetching_bank_data_task')
 def fetching_bank_data_task(self, application_id: str) -> None:
     """Fetch and persist bank data for any country in fetching_bank_data state."""
