@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.core.exceptions import ValidationError
 
 
 class Country(models.Model):
@@ -38,18 +39,20 @@ class CountryStatus(models.Model):
 
 
 class StatusTransition(models.Model):
-    """Transición permitida entre dos estados de un país, con task opcional."""
+    """Transición permitida entre dos estados de un país."""
     from_status   = models.ForeignKey(CountryStatus, on_delete=models.CASCADE, related_name='outgoing_transitions')
     to_status     = models.ForeignKey(CountryStatus, on_delete=models.CASCADE, related_name='incoming_transitions')
-    triggers_task = models.CharField(max_length=100, blank=True, help_text='Nombre del task Celery a disparar al entrar al estado destino')
 
     class Meta:
         db_table = 'status_transition'
         unique_together = [('from_status', 'to_status')]
 
+    def clean(self):
+        if self.from_status_id and self.to_status_id and self.from_status.country_id != self.to_status.country_id:
+            raise ValidationError({'to_status': 'La transición debe ocurrir dentro del mismo país.'})
+
     def __str__(self):
-        task = f' → {self.triggers_task}' if self.triggers_task else ''
-        return f'{self.from_status.code} → {self.to_status.code}{task}'
+        return f'{self.from_status.code} → {self.to_status.code}'
 
 
 class CountryValidation(models.Model):

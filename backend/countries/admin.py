@@ -13,7 +13,7 @@ class StatusTransitionInline(admin.TabularInline):
     model = StatusTransition
     fk_name = 'from_status'
     extra = 0
-    fields = ('to_status', 'triggers_task')
+    fields = ('to_status',)
 
 
 @admin.register(CountryStatus)
@@ -26,7 +26,7 @@ class CountryStatusAdmin(admin.ModelAdmin):
 
 @admin.register(StatusTransition)
 class StatusTransitionAdmin(admin.ModelAdmin):
-    list_display  = ('from_status', 'to_status', 'triggers_task')
+    list_display  = ('from_status', 'to_status')
     list_filter   = ('from_status__country',)
 
 
