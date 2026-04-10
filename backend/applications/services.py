@@ -1,5 +1,8 @@
 import logging
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
@@ -19,6 +22,36 @@ logger = logging.getLogger(__name__)
 class CreditApplicationService:
 
     @staticmethod
+    def _build_timeline_event_payload(application_id: str, history: ApplicationStatusHistory) -> dict:
+        return {
+            'event': 'timeline.transition.created',
+            'application_id': application_id,
+            'transition': {
+                'from_status': history.from_status,
+                'to_status': history.to_status,
+                'changed_by': history.changed_by,
+                'changed_at': history.changed_at.isoformat(),
+                'metadata': history.metadata,
+            },
+        }
+
+    @staticmethod
+    def _publish_timeline_event(application_id: str, payload: dict) -> None:
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        try:
+            async_to_sync(channel_layer.group_send)(
+                f'application_{application_id}',
+                {
+                    'type': 'timeline_event',
+                    'data': payload,
+                },
+            )
+        except Exception:
+            return
+
+    @staticmethod
     def _create_status_history(
         application: CreditApplication,
         from_status: str,
@@ -26,12 +59,16 @@ class CreditApplicationService:
         changed_by: str,
         metadata: dict | None = None,
     ) -> None:
-        ApplicationStatusHistory.objects.create(
+        history = ApplicationStatusHistory.objects.create(
             application=application,
             from_status=from_status,
             to_status=to_status,
             changed_by=changed_by,
             metadata=metadata or {},
+        )
+        payload = CreditApplicationService._build_timeline_event_payload(str(application.id), history)
+        transaction.on_commit(
+            lambda: CreditApplicationService._publish_timeline_event(str(application.id), payload)
         )
 
     @staticmethod

@@ -37,8 +37,10 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'daphne',
     'django.contrib.staticfiles',
     # Third party
+    'channels',
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
@@ -79,6 +81,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 
 # Database
@@ -172,6 +175,16 @@ CELERY_ACCEPT_CONTENT    = ['json']
 CELERY_TASK_SERIALIZER   = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE          = TIME_ZONE
+
+CHANNEL_LAYER_URL = config('CHANNEL_LAYER_URL', default='redis://localhost:6379/2')
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [CHANNEL_LAYER_URL],
+        },
+    },
+}
 
 AUTH_USER_MODEL = 'users.User'
 
