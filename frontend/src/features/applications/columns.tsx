@@ -1,6 +1,6 @@
 import type { ColumnDef, CellContext } from '@tanstack/react-table'
 import { Link } from 'react-router'
-import { Eye } from 'lucide-react'
+import { Copy, Eye } from 'lucide-react'
 import { Badge } from '~/components/ui/badge'
 import { buttonVariants } from '~/components/ui/button'
 import { cn } from '~/lib/utils'
@@ -25,12 +25,20 @@ function formatCurrency(value: string) {
   }).format(Number(value))
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('es-MX', {
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString('es-MX', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
+}
+
+async function copyToClipboard(text: string) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+  }
 }
 
 export function createApplicationColumns(
@@ -39,32 +47,41 @@ export function createApplicationColumns(
 ): ColumnDef<CreditApplication, unknown>[] {
   return [
   {
+    accessorKey: 'id',
+    header: 'ID',
+    meta: { orderingKey: 'id' },
+    cell: ({ getValue }: Cell) => {
+      const id = String(getValue())
+      return (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span
+            className="text-muted-foreground text-xs font-mono truncate max-w-32.5"
+            title={id}
+          >
+            {id}
+          </span>
+          <button
+            type="button"
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+              'shrink-0',
+            )}
+            onClick={() => {
+              void copyToClipboard(id)
+            }}
+            aria-label={`Copiar ID ${id}`}
+            title="Copiar ID"
+          >
+            <Copy className="size-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      )
+    },
+  },
+  {
     accessorKey: 'full_name',
     header: 'Solicitante',
     meta: { orderingKey: 'full_name' },
-  },
-  {
-    accessorKey: 'user_email',
-    header: 'Creada por',
-    meta: { orderingKey: 'user__email' },
-    cell: ({ getValue }: Cell) => (
-      <span className="text-muted-foreground text-sm font-mono">
-        {getValue() as string}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'country',
-    header: 'País',
-    meta: { orderingKey: 'country_ref__code' },
-    cell: ({ getValue }: Cell) => {
-      const val = getValue() as ApplicationCountry
-      return (
-        <Badge variant="outline" className="font-mono text-xs">
-          {val} · {countryMap[val] ?? val}
-        </Badge>
-      )
-    },
   },
   {
     accessorKey: 'document_type',
@@ -89,6 +106,19 @@ export function createApplicationColumns(
     cell: ({ getValue }: Cell) => formatCurrency(getValue() as string),
   },
   {
+    accessorKey: 'country',
+    header: 'País',
+    meta: { orderingKey: 'country_ref__code' },
+    cell: ({ getValue }: Cell) => {
+      const val = getValue() as ApplicationCountry
+      return (
+        <Badge variant="outline" className="font-mono text-xs">
+          {val} · {countryMap[val] ?? val}
+        </Badge>
+      )
+    },
+  },
+  {
     accessorKey: 'status',
     header: 'Estado',
     meta: { orderingKey: 'status__order' },
@@ -103,9 +133,9 @@ export function createApplicationColumns(
   },
   {
     accessorKey: 'requested_at',
-    header: 'Fecha',
+    header: 'Fecha-hora',
     meta: { orderingKey: 'requested_at' },
-    cell: ({ getValue }: Cell) => formatDate(getValue() as string),
+    cell: ({ getValue }: Cell) => formatDateTime(getValue() as string),
   },
   {
     id: 'actions',
