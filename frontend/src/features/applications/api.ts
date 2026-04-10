@@ -15,5 +15,5 @@ export function createApplication(
 }
 
 export function fetchCountries(): Promise<CountryMeta[]> {
-  return publicApi.get('/applications/countries/').then((r) => r.data)
+  return publicApi.get('/countries/').then((r) => r.data)
 }
