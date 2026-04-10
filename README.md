@@ -29,6 +29,13 @@ make prod  # prod: Daphne + Nginx, imágenes compiladas
 
 El `.env` se crea automáticamente en el primer arranque. Acceso: `http://localhost:3000`.
 
+Las fixtures se cargan automáticamente. Usuarios disponibles al iniciar:
+
+| Email | Contraseña | Rol |
+|---|---|---|
+| `admin@dev.local` | `admin123` | `admin` |
+| `user@dev.local` | `user1234` | `user` |
+
 > Docker es el único entorno soportado.
 
 ### Diferencias entre entornos
