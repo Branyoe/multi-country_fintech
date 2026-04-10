@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: bravo
+spec:
+  # Headless: clusterIP=None gives the StatefulSet pod a stable DNS record
+  # postgres-0.postgres.bravo.svc.cluster.local
+  # DB_HOST=postgres also resolves because the headless service registers
+  # an A record for the service name pointing to the pod IP.
+  clusterIP: None
+  publishNotReadyAddresses: false
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

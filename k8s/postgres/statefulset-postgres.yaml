@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: bravo
+spec:
+  serviceName: postgres  # Must match the headless Service name
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "bravo"
+            # Credentials come from secret; keeps postgres container isolated
+            # from the full Django env (no SECRET_KEY, no CELERY_*, etc.)
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: api-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          startupProbe:
+            exec:
+              command: [pg_isready, -U, bravo]
+            failureThreshold: 30  # Up to 150s for first start with data
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, bravo]
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, bravo]
+            periodSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc

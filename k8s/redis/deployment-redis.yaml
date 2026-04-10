@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: bravo
+spec:
+  replicas: 1
+  # Recreate prevents two Redis instances briefly sharing the same port
+  # binding during a rolling update. Data loss on restart is acceptable:
+  # - Broker (DB0): Celery tasks requeue on reconnect
+  # - Cache (DB1): misses fall back to DB (IGNORE_EXCEPTIONS=True in settings)
+  # - Channel layer (DB2): in-flight WS events are dropped, not critical
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          startupProbe:
+            exec:
+              command: [redis-cli, ping]
+            failureThreshold: 10
+            periodSeconds: 3
+          livenessProbe:
+            exec:
+              command: [redis-cli, ping]
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [redis-cli, ping]
+            periodSeconds: 5
+            failureThreshold: 3

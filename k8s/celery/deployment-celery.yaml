@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: bravo
+spec:
+  replicas: 2  # Matches docker-compose.prod.yml deploy.replicas
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: redis:7-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until redis-cli -h redis ping; do
+                echo "Waiting for redis..."; sleep 2
+              done
+      containers:
+        - name: celery-worker
+          # Same image as the API — workers share the Django codebase
+          image: REPLACE_WITH_YOUR_REGISTRY/bravo-api:TAG
+          imagePullPolicy: IfNotPresent  # minikube: usa imagen local si ya existe
+          command:
+            - celery
+            - -A
+            - config
+            - worker
+            - --loglevel=info
+            - --concurrency=2  # 2 pods * 2 concurrency = 4 concurrent tasks
+          envFrom:
+            - configMapRef:
+                name: api-config
+            - secretRef:
+                name: api-secret
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 800m
+              memory: 512Mi
+          # No readinessProbe: workers are not behind a Service; readiness is N/A
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "celery -A config inspect ping -d celery@$HOSTNAME"
+            failureThreshold: 6  # 60s to connect to Redis and register
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "celery -A config inspect ping -d celery@$HOSTNAME"
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 10

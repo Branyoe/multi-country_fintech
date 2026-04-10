@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: bravo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      initContainers:
+        # Block pod start until Postgres accepts connections.
+        # Migrations are handled by job-migrate.yaml — run it before this Deployment.
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U bravo; do
+                echo "Waiting for postgres..."; sleep 2
+              done
+      containers:
+        - name: api
+          image: REPLACE_WITH_YOUR_REGISTRY/bravo-api:TAG
+          imagePullPolicy: IfNotPresent  # minikube: usa imagen local si ya existe
+          # Skip migrate here — that responsibility belongs to job-migrate.yaml.
+          # collectstatic is kept because Whitenoise needs the manifest at runtime.
+          command:
+            - sh
+            - -c
+            - "python manage.py collectstatic --noinput && daphne -b 0.0.0.0 -p 8000 config.asgi:application"
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: api-config
+            - secretRef:
+                name: api-secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          # exec probe avoids Host-header validation issues with ALLOWED_HOSTS.
+          # Mirrors the healthcheck from docker-compose.prod.yml exactly.
+          startupProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/countries/', timeout=2)"
+            failureThreshold: 24  # 24 * 5s = 120s for collectstatic + Daphne boot
+            periodSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/countries/', timeout=2)"
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/countries/', timeout=3)"
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
