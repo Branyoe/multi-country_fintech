@@ -4,96 +4,363 @@
 API REST para evaluación de solicitudes de crédito con estrategia por país.
 Stack: Django REST Framework · PostgreSQL · Celery · Redis · React+Vite · Nginx · Docker.
 
-## Repo
+---
+
+## Estructura del repo
+
 Monorepo. `frontend/` y `backend/` son subdirectorios — nunca `git init` dentro de ellos.
 
 ```
 bravo-test/
 ├── backend/
-│   ├── config/          # settings, urls, celery
-│   ├── users/           # auth JWT
-│   ├── applications/    # solicitudes de crédito
-│   ├── common/applications/countries/  # strategy validators MX/CO
-│   ├── fixtures/users.json
-│   ├── Dockerfile.prod · Dockerfile.dev
-│   ├── entrypoint.prod.sh · entrypoint.dev.sh
-│   └── .env.example · .env.prod · .env.dev  (no commitear)
+│   ├── config/               # settings.py, urls.py, celery.py, wsgi.py
+│   ├── users/                # auth JWT (signup, token)
+│   ├── countries/            # Country, CountryStatus, StatusTransition + validators MX/CO
+│   │   └── validators/       # base.py, mx.py, co.py, registry.py
+│   ├── applications/         # CreditApplication + services + tasks + filters
+│   ├── fixtures/             # users.json, countries.json, statuses.json
+│   ├── conftest.py           # pytest fixtures globales (countries, statuses, cache)
+│   ├── pytest.ini
+│   ├── Dockerfile.dev · Dockerfile.prod
+│   ├── entrypoint.dev.sh · entrypoint.prod.sh
+│   ├── pyproject.toml        # deps via uv
+│   └── .env.example · .env.dev · .env.prod  (no commitear)
 ├── frontend/
-│   ├── src/features/applications/  # types, api, columns, components
-│   ├── src/components/data-table/  # DataTable genérico DRF+TanStack
-│   ├── src/shared/types/           # DRFPaginatedParams/Response
-│   ├── Dockerfile.prod · Dockerfile.dev
+│   ├── src/
+│   │   ├── app/              # router.tsx, páginas raíz
+│   │   ├── features/
+│   │   │   ├── applications/ # types, api, columns, components/, hooks/
+│   │   │   └── auth/         # store (Zustand), actions, pages/
+│   │   ├── components/
+│   │   │   ├── ui/           # shadcn/ui + Base UI
+│   │   │   └── data-table/   # DataTable genérico DRF+TanStack
+│   │   ├── lib/              # api.ts (axios), auth.ts, form-errors.ts, bootstrap.ts
+│   │   ├── shared/types/     # DRFPaginatedParams / DRFPaginatedResponse
+│   │   └── types/api.ts      # User, TokenPair, ApiError
+│   ├── vite.config.ts
+│   ├── Dockerfile.dev · Dockerfile.prod
 │   └── nginx.prod.conf
-├── docker-compose.prod.yml · docker-compose.dev.yml
+├── docker-compose.dev.yml · docker-compose.prod.yml
 ├── Makefile
-└── docs/  # arquitecture.mmd · database.mmd · flows/
+└── docs/                     # architecture.mmd · database/database.mmd · flows/
 ```
+
+---
 
 ## Comandos backend
 ```bash
-uv run backend/manage.py runserver        # dev local
+# Desde la raíz del repo (uv resuelve el proyecto en backend/)
+uv run backend/manage.py runserver
 uv run backend/manage.py makemigrations <app>
 uv run backend/manage.py migrate
-uv --project backend add <paquete>        # instalar dep (no pip)
-```
-> Usar rutas absolutas o encadenar en un solo comando — `cd` persiste entre llamadas shell.
+uv --project backend add <paquete>      # instalar dep — no usar pip directamente
 
-## Docker
-```bash
-make dev-build && make dev    # dev: runserver + Vite HMR + 1 worker
-make prod-build && make prod  # prod: gunicorn + nginx + 2 workers
-make dev-clean                # resetear volúmenes dev
+# Desde dentro de backend/
+cd backend && uv run manage.py <comando>
 ```
+> `cd` no persiste entre llamadas shell. Usar rutas absolutas o encadenar con `&&`.
+
+## Comandos frontend
+```bash
+cd frontend && npm run dev      # dev local (sin Docker)
+cd frontend && npm run build    # tsc -b && vite build
+cd frontend && npm run lint
+```
+
+## Tests backend
+```bash
+cd backend && uv run pytest                  # todos los tests
+cd backend && uv run pytest applications/    # app específica
+cd backend && uv run pytest -q               # quiet
+```
+
+## Docker (vía Makefile)
+```bash
+make dev-build && make dev       # dev: runserver + Vite HMR + 1 worker Celery
+make prod-build && make prod     # prod: gunicorn + nginx + 2 workers Celery
+make dev-down                    # parar contenedores
+make dev-clean                   # parar + borrar volúmenes (reset total)
+make logs-dev                    # tail de todos los logs dev
+make logs-prod                   # tail de todos los logs prod
+```
+
 Archivos env: `backend/.env.dev` (dev) · `backend/.env.prod` (prod).
 
+---
+
 ## Stack backend
-- Python 3.13 · Django 6 · DRF 3.17 · SimpleJWT · django-cors-headers · Whitenoise · Celery · django-celery-results
-- DB: PostgreSQL (Docker) / SQLite (local sin Docker)
-- `DEFAULT_AUTHENTICATION_CLASSES`: JWTAuthentication — `DEFAULT_PERMISSION_CLASSES`: IsAuthenticated
-- Paginación: `PageNumberPagination`, `PAGE_SIZE=10`
-- Endpoints públicos: declarar `permission_classes = (AllowAny,)` explícitamente
+- Python 3.13 · Django 6 · DRF 3.17 · SimpleJWT · django-cors-headers · Whitenoise · Celery · django-celery-results · django-redis · python-decouple · django-filter
+- DB: PostgreSQL 16 (Docker) / SQLite (local sin Docker, controlado por `DB_ENGINE` en .env)
+- Cache: Redis (DB 1) — `django-redis` con `IGNORE_EXCEPTIONS=True` (degrada a DB si Redis falla)
+- Celery broker: Redis (DB 0)
+
+### DRF global
+```python
+DEFAULT_PERMISSION_CLASSES   = [IsAuthenticated]
+DEFAULT_AUTHENTICATION_CLASSES = [JWTAuthentication]
+DEFAULT_PAGINATION_CLASS     = PageNumberPagination  # PAGE_SIZE=10
+DEFAULT_FILTER_BACKENDS      = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+```
+- Endpoints públicos: declarar `permission_classes = [AllowAny]` explícitamente
 - JWT: access 15 min · refresh 7 días · header `Authorization: Bearer <token>`
 
-## Stack frontend
-- Vite 8 · React 19 · TypeScript · Tailwind v4 · shadcn/ui (Base UI) · TanStack Query + Table · react-hook-form · zod
-- Alias de imports: `~/` → `src/`
-- Proxy dev: `VITE_PROXY_TARGET=http://api:8000` (docker) / `http://localhost:8000` (local)
+---
 
-## Apps Django activas
+## Stack frontend
+- Vite 8 · React 19 · TypeScript (es2023, bundler module resolution) · Tailwind v4
+- shadcn/ui + Base UI (@base-ui/react) · class-variance-authority (CVA) para variantes
+- TanStack Query v5 · TanStack Table v8 · react-hook-form · zod · Zustand · React Router v7
+- Axios con interceptores (auto-refresh de token en 401, queue de requests paralelos)
+- Alias de imports: `~/` → `src/`
+- Proxy dev: `/api`, `/admin`, `/static` → `VITE_PROXY_TARGET` (default `http://localhost:8000`)
+
+---
+
+## Apps Django
 
 ### `users`
-- `User`: AbstractBaseUser, login por email, roles `user|admin`, UUID PK
-- Endpoints: `POST /api/auth/signup/` · `/api/auth/token/` · `/api/auth/token/refresh/`
+- `User`: AbstractBaseUser, login por email, roles `user|admin`, UUID PK, `db_table='users'`
+- Endpoints: `POST /api/auth/signup/` · `POST /api/auth/token/` · `POST /api/auth/token/refresh/`
+
+### `countries`
+- `Country`: código, label, regex de documento, `is_active`, `db_table='country'`
+- `CountryStatus`: estados por país (`code`, `label`, `is_initial`, `is_terminal`, `order`), `db_table='country_status'`
+- `StatusTransition`: transiciones permitidas + `triggers_task` (nombre del Celery task), `db_table='status_transition'`
+- `CountryValidation`: resultado por regla financiera, FK a `CreditApplication`, `db_table='country_validations'`
+- Endpoint público: `GET /api/countries/` — devuelve países con array `statuses` anidado (cacheado en Redis, invalidación automática via signals)
+- Validadores en `countries/validators/`: `BaseCountryValidator` (ABC) → `MXCountryValidator`, `COCountryValidator`
+- Registry en `countries/validators/registry.py`: `get_validator(country_code) → BaseCountryValidator`
 
 ### `applications`
-- Modelos: `CreditApplication`, `BankProviderData`, `CountryValidation`, `ApplicationStatusHistory`
-- `CreditApplicationService`: valida doc → mock bank → reglas financieras → persiste → Celery task
-- Strategy por país en `common/applications/countries/`: `MXCountryValidator`, `COCountryValidator`
-- Endpoints: `GET/POST /api/applications/` · `PATCH /api/applications/{id}/`
+- `CreditApplication`: FK a `User`, FK a `Country` (como `country_ref`), FK a `CountryStatus` (como `status`), UUID PK, `db_table='credit_applications'`
+  - `@property country` → `country_ref.code`
+  - `@property status_code` → `status.code` (acceso sin JOIN innecesario)
+- `BankProviderData`: OneToOne a `CreditApplication`, datos del buró, `db_table='bank_provider_data'`
+- `ApplicationStatusHistory`: historial inmutable de cambios de estado (strings, no FK), `db_table='application_status_history'`
+- Endpoints: `GET/POST /api/applications/` · `GET /api/applications/{id}/` · `PATCH /api/applications/{id}/`
+
+---
 
 ## Convenciones backend
-- App en `backend/<app>/`, URLs en `config/urls.py` bajo `/api/<app>/`
-- Serializers en `<app>/serializers.py`, vistas en `<app>/views.py`
-- Modelos: `db_table` explícito (coincidir con ERD en `docs/database/database.mmd`), UUID PK, `created_at`/`updated_at`
+
+### Modelos
+- UUID PK en todos los modelos: `id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)`
+- `db_table` explícito (coincidir con ERD en `docs/database/database.mmd`)
+- Timestamps: `requested_at`/`created_at` con `auto_now_add=True`, `updated_at` con `auto_now=True`
+- FKs con `related_name` siempre definido
+- `on_delete=models.PROTECT` en FKs de auditoría/historial
+
+### Serializers (patrón por operación)
+- **Write** (`CreditApplicationSerializer`): validación de input, campos `write_only`
+- **Update** (`CreditApplicationStatusSerializer`): valida transición via `StatusTransition` en DB
+- **Read** (`CreditApplicationReadSerializer`): `SerializerMethodField` + `ReadOnlyField` para campos derivados
+- `get_serializer_class()` en el ViewSet despacha por `self.action`
+
+### Views / ViewSets
+- Usar mixins explícitos en lugar de `ModelViewSet`:
+  ```python
+  class CreditApplicationViewSet(
+      mixins.RetrieveModelMixin,
+      mixins.UpdateModelMixin,
+      mixins.ListModelMixin,
+      viewsets.GenericViewSet,
+  ):
+  ```
+- `http_method_names` declarado explícitamente para documentar intención
+- `get_queryset()` siempre filtra por `self.request.user` (aislamiento por tenant)
+- Mapeo de excepciones a HTTP en la vista: `ValueError → 400`, `ValidationError → 422`, `BankProviderError → 502`
+
+### Services layer (`applications/services.py`)
+- Lógica de negocio en clase con `@staticmethod` (sin estado, sin instancia)
+- `CreditApplicationService.create()`: valida doc → obtiene estado inicial del DB → persiste → despacha Celery task
+- `CreditApplicationService.update_status()`: valida transición via `StatusTransition` → actualiza → loguea historia → despacha task si aplica
+- Lanza `ValueError` para violaciones de negocio (mapeado a 400 en la vista)
+
+### Filtros (`applications/filters.py`)
+- Soporta parámetros repetidos (`?status=pending&status=approved`) y listas con coma
+- Relaciones en filtros: `status__code__in`, no `status__in`
+
+### Ordering
+- `ordering_fields` usa rutas de ORM para FKs: `status__order`, `country_ref__code`
+- `meta: { orderingKey: 'status__order' }` en columnas del frontend mapea al mismo campo
+
+### Celery tasks (`applications/tasks.py`)
+- `@shared_task(bind=True, max_retries=3)` — `self.retry(exc=exc, countdown=60)` en excepciones de red
+- Guard de idempotencia al inicio: `if app.status_code != 'pending': return`
+- `get_or_create()` para `BankProviderData` (seguro en retries)
+- Dispatch por nombre: `celery_app.send_task('process_application_mx', args=[str(app.id)])`
+- El nombre del task vive en `StatusTransition.triggers_task` — el código no referencia tasks directamente
+- Tasks actuales: `process_application_mx` (MX), `consulta_buro_co` (CO)
+- No hay Celery Beat configurado (sin tareas periódicas)
+
+### Validators (`countries/validators/`)
+```python
+class BaseCountryValidator(ABC):
+    def validate_document(self, doc) -> tuple[bool, str]       # sync, regex del DB
+    def fetch_bank_data(self, doc) -> BankData                  # async (en task), llamada al buró
+    def validate_financial_rules(self, amount, income, bank_data) -> tuple[bool, str, str]
+    def get_initial_task(self) -> str                            # nombre del Celery task
+    def get_validation_rules(self) -> list[str]                 # reglas a registrar en CountryValidation
+```
+- `BankData` es un `@dataclass` con campos `provider_name`, `account_status`, `total_debt`, `credit_score`, `raw_response`
+- Para añadir un país: crear `XYCountryValidator`, registrar en `registry.py`, añadir estados/transiciones en fixtures
+
+### Cache de países
+- `countries/cache.py::get_countries_cached()` → `{code: Country}` desde Redis, con `prefetch_related('statuses')`
+- Invalidación automática via `post_save`/`post_delete` signals conectados en `CountriesConfig.ready()`
+
+---
 
 ## Convenciones frontend
-- Feature en `src/features/<feature>/` con `types.ts`, `api.ts`, `columns.tsx`, `components/`
-- shadcn components en `src/components/ui/` — importar desde `~/components/ui/`
+
+### Feature structure
+```
+src/features/<feature>/
+├── types.ts          # interfaces y tipos del dominio
+├── api.ts            # funciones de API (thin wrappers sobre axios)
+├── columns.tsx       # ColumnDef[] de TanStack Table
+├── components/       # componentes específicos del feature
+└── hooks/            # custom hooks (useCountries, useStatuses, etc.)
+```
+
+### API layer (`src/lib/api.ts`)
+- `api`: cliente autenticado — inyecta `Authorization: Bearer` via interceptor de request
+- `publicApi`: cliente sin auth (para signup, token, countries)
+- `serializeParams`: arrays serialized como parámetros repetidos (`?status=a&status=b`), no como `status[]=a`
+- Interceptor de response: detecta 401 → intenta refresh → reintenta request original — cola los requests paralelos con flag `isRefreshing` para evitar refreshes duplicados
+
+### React Query
+- `staleTime: Infinity` para datos estáticos (países, catálogos) — sin peticiones extra en refocus
+- `queryKey` incluye todos los params de paginación/filtro/orden → refetch automático al cambiar
+- `placeholderData: (prev) => prev` en DataTable para evitar flicker durante refetch
+- `refetchOnWindowFocus: false` en DataTable
+
+### TanStack Table + DataTable
+- Paginación y sorting **manual** (enviados al backend vía params, no computados en cliente)
+- `meta: { orderingKey: 'field__subfield' }` en columnas mapea el sort al campo DRF
+- `FilterConfig` y `FilterOption` son los tipos del DataTable genérico:
+  ```typescript
+  interface FilterConfig {
+    key: string; label: string; type?: 'single' | 'multiple'
+    options?: FilterOption[]; isSearchable?: boolean; allowEmpty?: boolean
+  }
+  ```
+- `disableOrderingColumns: []` habilita ordering en todas las columnas
+- Debounce de 300ms en búsqueda de texto
+
+### Formularios
+- `zod` define el schema → `zodResolver` conecta con `react-hook-form`
+- `applyApiErrors(err, setError, knownFields)` en `src/lib/form-errors.ts` enruta errores DRF:
+  - Campos conocidos → `setError(field, ...)` (error inline)
+  - `non_field_errors` y campos desconocidos → banner de error
+- Campos numéricos como `string` en el form (el API los recibe como string)
+
+### Auth (Zustand)
+- `useAuthStore` en `src/features/auth/store.ts`: `accessToken` en memoria, `refreshToken` en `localStorage`
+- `bootstrap()` en `src/lib/bootstrap.ts`: intenta refresh al arrancar la app antes de montar el router
+- `requireAuth` loader en el router: redirige a `/login?next=...` si no hay token
+
+### shadcn/ui + Base UI
+- Componentes en `src/components/ui/` — importar desde `~/components/ui/`
+- `buttonVariants` de CVA para reusar estilos de botón sin el componente Button (ej: links)
+- Variantes Badge: `secondary` (pending), `outline` (en revisión / verificacion_buro), `default` (approved), `destructive` (rejected)
+
+---
+
+## Infra y despliegue
+
+### Servicios Docker
+
+| Servicio | Dev | Prod |
+|---|---|---|
+| API | `runserver` | Gunicorn 2 workers, timeout 60s |
+| Frontend | Vite HMR :3000 | Nginx :3000 sirve build estático |
+| Celery | 1 worker, debug | 2 replicas, 2 concurrency, info |
+| Postgres | 16-alpine, `bravo_dev` | 16-alpine, `bravo` |
+| Redis | 7-alpine | 7-alpine |
+
+### Nginx (prod, `frontend/nginx.prod.conf`)
+- `/` → SPA fallback: `try_files $uri $uri/ /index.html` (React Router maneja rutas)
+- `/api/` → proxy a `http://api:8000/api/`
+- `/admin/` → proxy a `http://api:8000/admin/`
+- `/static/` → proxy a `http://api:8000/static/` (servido por Whitenoise)
+
+### Whitenoise (static files)
+- Storage: `CompressedManifestStaticFilesStorage` — compresión gzip + hashes en nombres
+- `collectstatic --noinput` corre en `entrypoint.prod.sh` antes de Gunicorn
+
+### Entrypoints
+Ambos entrypoints ejecutan al inicio del contenedor:
+1. `migrate --noinput`
+2. `loaddata fixtures/users.json` (con `|| echo ...` — idempotente)
+3. `loaddata fixtures/countries.json`
+4. `loaddata fixtures/statuses.json`
+5. *(solo prod)* `collectstatic --noinput`
+6. Inicia servidor (runserver / gunicorn)
+
+### Variables de entorno requeridas
+```
+SECRET_KEY, DEBUG, ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS, CSRF_TRUSTED_ORIGINS
+DB_ENGINE, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+CELERY_BROKER_URL   # redis://...:6379/0
+CACHE_URL           # redis://...:6379/1
+```
+Local sin Docker: omitir `DB_ENGINE` → SQLite automático. Redis opcional (cache degrada a DB).
+
+---
+
+## Testing
+
+### Fixtures globales (`backend/conftest.py`, `autouse=True`)
+- `locmem_cache`: reemplaza Redis por cache en memoria para todos los tests
+- `setup_countries`: crea MX y CO via `bulk_create`, limpia cache antes/después
+- `setup_statuses`: crea `CountryStatus` y `StatusTransition` para MX (4 estados, 4 transiciones) y CO (5 estados, 6 transiciones)
+- `mock_celery_send_task`: parchea `applications.services.celery_app.send_task` — los tasks nunca se ejecutan en tests
+
+### Patrones de test
+```python
+# Helper de payload reutilizable
+def payload(**kwargs):
+    base = {'country': 'MX', 'full_name': '...', 'document_number': 'PERJ800101HDFRZN09', ...}
+    base.update(kwargs)
+    return base
+
+# Auth client via JWT real
+def _make_auth_client(email, password):
+    c = Client()
+    res = c.post(reverse('auth-token'), {'email': email, 'password': password}, content_type='application/json')
+    c.defaults['HTTP_AUTHORIZATION'] = f"Bearer {res.json()['access']}"
+    return c
+
+# Clases de test agrupadas por dominio
+@pytest.mark.django_db
+class TestAuth: ...
+class TestCreate: ...
+class TestList: ...
+class TestTasks: ...
+```
+- `pytest.ini`: `DJANGO_SETTINGS_MODULE=config.settings`
+- Tests en `applications/tests/test_applications.py`
+
+---
 
 ## Commits
+
 **No hacer commits sin que el usuario lo indique explícitamente.**
 
 Formato: `<type>(<scope>): <descripción>`
 Scopes: `frontend` · `backend` · `docker` · `docs` · `config`
-Ejemplos:
+
 ```
-feat(frontend): add credit applications table
 feat(backend): add country validator strategy
+feat(frontend): add credit applications table
 fix(docker): fix postgres healthcheck race condition
 chore(frontend): install @tanstack/react-table
-docs: update README with Docker environments
+docs: update architecture diagram
 ```
 Co-author en cada commit: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
+---
+
 ## ERD
-`docs/database/database.mmd` — fuente de verdad. Verificar antes de crear/modificar modelos.
+`docs/database/database.mmd` — fuente de verdad del schema. Verificar antes de crear o modificar modelos.
