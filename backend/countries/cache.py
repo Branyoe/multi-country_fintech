@@ -23,7 +23,6 @@ def _warn_cache_unavailable_once() -> None:
         _cache_unavailable_warned = True
         logger.warning(
             'Country metadata cache is unavailable; falling back to the database.',
-            exc_info=True,
         )
 
 
