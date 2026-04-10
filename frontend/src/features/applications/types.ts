@@ -1,5 +1,12 @@
-export type ApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected'
+export type ApplicationStatus = string
 export type ApplicationCountry = string
+
+export interface StatusMeta {
+  code: string
+  label: string
+  is_terminal: boolean
+  order: number
+}
 
 export interface CountryMeta {
   code: string
@@ -8,6 +15,7 @@ export interface CountryMeta {
   document_hint: string
   document_example: string
   document_regex: string
+  statuses: StatusMeta[]
 }
 
 export interface CreditApplication {

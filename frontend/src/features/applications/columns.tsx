@@ -1,24 +1,20 @@
 import type { ColumnDef, CellContext } from '@tanstack/react-table'
 import { Badge } from '~/components/ui/badge'
-import type { CreditApplication, ApplicationCountry, ApplicationStatus } from './types'
+import type { CreditApplication, ApplicationCountry, ApplicationStatus, StatusMeta } from './types'
 
 type Cell = CellContext<CreditApplication, unknown>
+type BadgeVariant = 'secondary' | 'outline' | 'default' | 'destructive'
 
-const STATUS_LABELS: Record<ApplicationStatus, string> = {
-  pending: 'Pendiente',
-  under_review: 'En revisión',
-  approved: 'Aprobada',
-  rejected: 'Rechazada',
-}
-
-const STATUS_VARIANTS: Record<
-  ApplicationStatus,
-  'secondary' | 'outline' | 'default' | 'destructive'
-> = {
+const BADGE_VARIANTS: Record<string, BadgeVariant> = {
   pending: 'secondary',
   under_review: 'outline',
   approved: 'default',
   rejected: 'destructive',
+  verificacion_buro: 'outline',
+}
+
+function statusVariant(code: string): BadgeVariant {
+  return BADGE_VARIANTS[code] ?? 'secondary'
 }
 
 
@@ -40,6 +36,7 @@ function formatDate(iso: string) {
 
 export function createApplicationColumns(
   countryMap: Record<string, string>,
+  statusMap: Record<string, StatusMeta>,
 ): ColumnDef<CreditApplication, unknown>[] {
   return [
   {
@@ -85,12 +82,12 @@ export function createApplicationColumns(
   {
     accessorKey: 'status',
     header: 'Estado',
-    meta: { orderingKey: 'status' },
+    meta: { orderingKey: 'status__order' },
     cell: ({ getValue }: Cell) => {
-      const status = getValue() as ApplicationStatus
+      const code = getValue() as ApplicationStatus
       return (
-        <Badge variant={STATUS_VARIANTS[status]}>
-          {STATUS_LABELS[status]}
+        <Badge variant={statusVariant(code)}>
+          {statusMap[code]?.label ?? code}
         </Badge>
       )
     },

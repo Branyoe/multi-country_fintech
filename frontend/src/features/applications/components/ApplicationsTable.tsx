@@ -3,29 +3,27 @@ import { DataTable } from '~/components/data-table/DataTable'
 import { fetchApplications } from '../api'
 import { createApplicationColumns } from '../columns'
 import { useCountries } from '../hooks/useCountries'
+import { useStatuses } from '../hooks/useStatuses'
 import type { FilterConfig } from '~/components/data-table/DataTable'
-
-const STATUS_FILTER: FilterConfig = {
-  key: 'status',
-  label: 'Estado',
-  type: 'multiple',
-  options: [
-    { value: 'pending', label: 'Pendiente' },
-    { value: 'under_review', label: 'En revisión' },
-    { value: 'approved', label: 'Aprobada' },
-    { value: 'rejected', label: 'Rechazada' },
-  ],
-}
 
 export function ApplicationsTable() {
   const { data: countries = [] } = useCountries()
+  const statuses = useStatuses()
 
   const countryMap = useMemo(
     () => Object.fromEntries(countries.map((c) => [c.code, c.label])),
     [countries],
   )
 
-  const columns = useMemo(() => createApplicationColumns(countryMap), [countryMap])
+  const statusMap = useMemo(
+    () => Object.fromEntries(statuses.map((s) => [s.code, s])),
+    [statuses],
+  )
+
+  const columns = useMemo(
+    () => createApplicationColumns(countryMap, statusMap),
+    [countryMap, statusMap],
+  )
 
   const filterConfigs: FilterConfig[] = useMemo(
     () => [
@@ -35,9 +33,14 @@ export function ApplicationsTable() {
         type: 'multiple',
         options: countries.map((c) => ({ value: c.code, label: c.label })),
       },
-      STATUS_FILTER,
+      {
+        key: 'status',
+        label: 'Estado',
+        type: 'multiple',
+        options: statuses.map((s) => ({ value: s.code, label: s.label })),
+      },
     ],
-    [countries],
+    [countries, statuses],
   )
 
   return (
