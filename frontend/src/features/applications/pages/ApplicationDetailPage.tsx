@@ -6,7 +6,6 @@ import { Link, useParams } from 'react-router'
 import { Badge } from '~/components/ui/badge'
 import { buttonVariants } from '~/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
-import { Separator } from '~/components/ui/separator'
 import { cn } from '~/lib/utils'
 import { fetchApplicationById } from '~/features/applications/api'
 import { useCountries } from '~/features/applications/hooks/useCountries'
@@ -171,17 +170,7 @@ export default function ApplicationDetailPage() {
                         {' -> '}
                         {statusMap[entry.to_status] ?? entry.to_status}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(entry.changed_at)} · {entry.changed_by}
-                      </p>
-                      {entry.metadata && Object.keys(entry.metadata).length > 0 && (
-                        <>
-                          <Separator className="my-2" />
-                          <pre className="overflow-x-auto rounded-md bg-muted p-2 text-xs">
-                            {JSON.stringify(entry.metadata, null, 2)}
-                          </pre>
-                        </>
-                      )}
+                      <p className="text-xs text-muted-foreground">{formatDate(entry.changed_at)}</p>
                     </div>
                   </li>
                 ))}
