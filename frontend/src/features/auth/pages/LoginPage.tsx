@@ -16,7 +16,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center">
+          <span className="font-display font-bold text-2xl tracking-tight text-foreground">fintech</span>
+        </div>
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Iniciar sesión</CardTitle>
           <CardDescription>Ingresa tus credenciales para continuar</CardDescription>
@@ -55,6 +59,7 @@ export default function LoginPage() {
           </CardFooter>
         </Form>
       </Card>
+      </div>
     </div>
   )
 }
