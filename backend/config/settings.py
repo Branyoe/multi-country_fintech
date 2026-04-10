@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework_simplejwt',
     'django_celery_results',
+    'django_db_logger',
     # Local
     'users',
     'applications',
@@ -186,6 +187,11 @@ CHANNEL_LAYERS = {
     },
 }
 
+# ── Webhooks ────────────────────────────────────────────────────────────────
+WEBHOOK_URL = config('WEBHOOK_URL', default='')
+WEBHOOK_TIMEOUT_SECONDS = config('WEBHOOK_TIMEOUT_SECONDS', default=5, cast=int)
+WEBHOOK_RETRY_COUNTDOWN_SECONDS = config('WEBHOOK_RETRY_COUNTDOWN_SECONDS', default=30, cast=int)
+
 AUTH_USER_MODEL = 'users.User'
 
 # Django REST Framework
@@ -228,3 +234,39 @@ CORS_ALLOWED_ORIGINS = config(
     default='',
     cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
 )
+
+DJANGO_DB_LOGGER_ENABLE_FORMATTER = True
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s %(asctime)s %(name)s %(message)s',
+        },
+    },
+    'handlers': {
+        'db_log': {
+            'level': 'INFO',
+            'class': 'django_db_logger.db_log_handler.DatabaseLogHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['db_log'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'applications': {
+            'handlers': ['db_log'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'countries': {
+            'handlers': ['db_log'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
