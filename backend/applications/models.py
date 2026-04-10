@@ -5,12 +5,6 @@ from django.db import models
 
 class CreditApplication(models.Model):
 
-    class Status(models.TextChoices):
-        PENDING      = 'pending',      'Pending'
-        UNDER_REVIEW = 'under_review', 'Under Review'
-        APPROVED     = 'approved',     'Approved'
-        REJECTED     = 'rejected',     'Rejected'
-
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user             = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='applications')
     country_ref      = models.ForeignKey('countries.Country', on_delete=models.PROTECT, related_name='applications', null=True, blank=True)
@@ -19,7 +13,7 @@ class CreditApplication(models.Model):
     document_number  = models.CharField(max_length=50)
     amount_requested = models.DecimalField(max_digits=12, decimal_places=2)
     monthly_income   = models.DecimalField(max_digits=12, decimal_places=2)
-    status           = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    status           = models.ForeignKey('countries.CountryStatus', on_delete=models.PROTECT, related_name='applications', null=True, blank=True)
     requested_at     = models.DateTimeField(auto_now_add=True)
     updated_at       = models.DateTimeField(auto_now=True)
 
@@ -28,11 +22,15 @@ class CreditApplication(models.Model):
         ordering = ['-requested_at']
 
     @property
-    def country(self):
+    def country(self) -> str:
         return self.country_ref.code if self.country_ref_id else ''
 
+    @property
+    def status_code(self) -> str:
+        return self.status.code if self.status_id else ''
+
     def __str__(self):
-        return f'{self.country} | {self.full_name} | {self.status}'
+        return f'{self.country} | {self.full_name} | {self.status_code}'
 
 
 class BankProviderData(models.Model):
