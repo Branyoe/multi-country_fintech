@@ -21,7 +21,7 @@ test('la página principal muestra el heading correcto', async ({ page }) => {
 
 test('la tabla de solicitudes muestra columnas correctas', async ({ page }) => {
   await expect(page.getByRole('columnheader', { name: /solicitante/i })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: /email/i })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /creada por/i })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /país/i })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /estado/i })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /fecha/i })).toBeVisible()
@@ -66,7 +66,12 @@ test('crear solicitud completa aparece en la tabla con email', async ({ page }) 
   await expect(page.getByRole('cell', { name: VALID_EMAIL }).first()).toBeVisible({ timeout: 5000 })
 })
 
-test('usuario puede cerrar sesión', async ({ page }) => {
+test('usuario puede cerrar sesión con confirmación', async ({ page }) => {
   await page.getByRole('button', { name: /cerrar sesión/i }).click()
+  // Confirmation dialog must appear
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /¿cerrar sesión\?/i })).toBeVisible()
+  // Confirm logout
+  await page.getByRole('button', { name: /cerrar sesión/i }).last().click()
   await expect(page).toHaveURL('/login')
 })
