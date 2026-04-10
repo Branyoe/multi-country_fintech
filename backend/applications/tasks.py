@@ -1,6 +1,8 @@
 import logging
+import random
 
 from celery import shared_task
+from .utils import delay
 
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,8 @@ def fetching_bank_data_task(self, application_id: str) -> None:
 
     if app.status_code != 'fetching_bank_data':
         return
+
+    delay(random.randint(3, 8))
 
     validator = get_validator(app.country_ref.code)
 
@@ -79,6 +83,8 @@ def validate_country_rules_task(self, application_id: str) -> None:
 
     if app.status_code != 'validate_country_rules':
         return
+
+    delay(random.randint(3, 8))
 
     if not hasattr(app, 'bank_data'):
         CreditApplicationService.update_status(
@@ -147,6 +153,8 @@ def notify_final_decision_task(self, application_id: str) -> None:
 
     if app.status_code not in {'approved', 'rejected'}:
         return
+
+    delay(random.randint(3, 8))
 
     logger.info(
         'final-decision-notification-sent',
