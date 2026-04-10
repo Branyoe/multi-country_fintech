@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock, patch
 from django.test import Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
@@ -74,13 +75,10 @@ def other_auth_client(other_user):
     return _make_auth_client('other@test.com', 'pass1234')
 
 @pytest.fixture(autouse=True)
-def mock_celery_task(monkeypatch):
-    """Evita que el task Celery se ejecute durante los tests."""
-    from unittest.mock import MagicMock
-    import applications.tasks as tasks_module
-    mock = MagicMock()
-    monkeypatch.setattr(tasks_module.process_application, 'delay', mock)
-    return mock
+def mock_celery_send_task():
+    """Evita que los tasks Celery se ejecuten durante los tests."""
+    with patch('applications.services.celery_app.send_task') as mock:
+        yield mock
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +102,7 @@ class TestAuth:
 
 @pytest.mark.django_db
 class TestCreate:
-    def test_create_mx_success(self, auth_client, mock_celery_task):
+    def test_create_mx_success(self, auth_client, mock_celery_send_task):
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')
         assert res.status_code == 201
         data = res.json()
@@ -112,14 +110,20 @@ class TestCreate:
         assert data['status'] == 'pending'
         assert data['document_type'] == 'CURP'
         assert 'id' in data
-        mock_celery_task.assert_called_once()
+        mock_celery_send_task.assert_called_once_with(
+            'process_application_mx', args=[data['id']]
+        )
 
-    def test_create_co_success(self, auth_client):
+    def test_create_co_success(self, auth_client, mock_celery_send_task):
         res = auth_client.post(LIST_URL, co_payload(), content_type='application/json')
         assert res.status_code == 201
         data = res.json()
         assert data['country'] == 'CO'
+        assert data['status'] == 'pending'
         assert data['document_type'] == 'CC'
+        mock_celery_send_task.assert_called_once_with(
+            'consulta_buro_co', args=[data['id']]
+        )
 
     def test_create_sets_status_pending(self, auth_client):
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')
@@ -151,7 +155,7 @@ class TestCreate:
         assert res.status_code == 400
 
     def test_create_invalid_country_choice(self, auth_client):
-        """País fuera del enum Django → 400 del serializer."""
+        """País fuera del catálogo activo → 400."""
         res = auth_client.post(LIST_URL, payload(country='XX'), content_type='application/json')
         assert res.status_code == 400
 
@@ -169,27 +173,25 @@ class TestCreate:
         res = auth_client.post(LIST_URL, co_payload(), content_type='application/json')
         assert res.status_code == 400
 
-    def test_create_persists_bank_provider_data(self, auth_client):
+    def test_create_creates_initial_history_entry(self, auth_client):
+        """La creación registra el primer entry de historial ('' → pending)."""
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')
-        app_id = res.json()['id']
-        assert BankProviderData.objects.filter(application_id=app_id).exists()
-        bank = BankProviderData.objects.get(application_id=app_id)
-        assert bank.provider_name == 'CNBV_MX'
+        pk = res.json()['id']
+        history = ApplicationStatusHistory.objects.filter(application_id=pk)
+        assert history.count() == 1
+        entry = history.first()
+        assert entry.from_status == ''
+        assert entry.to_status == 'pending'
 
-        app = CreditApplication.objects.get(id=app_id)
+    def test_create_mx_country_ref_set(self, auth_client):
+        res = auth_client.post(LIST_URL, payload(), content_type='application/json')
+        app = CreditApplication.objects.get(id=res.json()['id'])
         assert app.country_ref is not None
-        assert app.country_ref.code == app.country
-
-    def test_create_persists_country_validations(self, auth_client):
-        res = auth_client.post(LIST_URL, payload(), content_type='application/json')
-        app_id = res.json()['id']
-        rules = list(CountryValidation.objects.filter(application_id=app_id).values_list('rule_name', flat=True))
-        assert 'curp_format' in rules
-        assert 'monto_5x_ingreso' in rules
+        assert app.country_ref.code == 'MX'
 
 
 # ---------------------------------------------------------------------------
-# Validación de documentos y reglas financieras
+# Validación de documentos (síncrona — sigue retornando 422)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.django_db
@@ -202,22 +204,72 @@ class TestValidation:
         res = auth_client.post(LIST_URL, co_payload(document_number='ABC123'), content_type='application/json')
         assert res.status_code == 422
 
-    def test_mx_amount_exceeds_5x_income_returns_422(self, auth_client):
-        res = auth_client.post(
-            LIST_URL,
-            payload(amount_requested='100000.00', monthly_income='10000.00'),
-            content_type='application/json',
-        )
-        assert res.status_code == 422
 
-    def test_co_debt_exceeds_40pct_income_returns_422(self, auth_client):
-        """total_debt mock = 2000. income=1000 → 1000*0.4=400 < 2000 → falla."""
-        res = auth_client.post(
-            LIST_URL,
-            co_payload(monthly_income='1000.00'),
-            content_type='application/json',
+# ---------------------------------------------------------------------------
+# Tasks — validación financiera asíncrona
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestTasks:
+    def _create_app(self, auth_client, data=None):
+        """Crea una solicitud y retorna la instancia del modelo."""
+        res = auth_client.post(LIST_URL, data or payload(), content_type='application/json')
+        assert res.status_code == 201
+        return CreditApplication.objects.select_related('country_ref', 'status').get(
+            id=res.json()['id']
         )
-        assert res.status_code == 422
+
+    def test_mx_task_transitions_to_under_review_on_success(self, auth_client):
+        app = self._create_app(auth_client)
+        from applications.tasks import process_application_mx
+        process_application_mx(str(app.id))
+
+        app.refresh_from_db()
+        assert app.status_code == 'under_review'
+        assert BankProviderData.objects.filter(application=app).exists()
+        rules = list(CountryValidation.objects.filter(application=app).values_list('rule_name', flat=True))
+        assert 'curp_format' in rules
+        assert 'monto_5x_ingreso' in rules
+
+    def test_mx_task_transitions_to_rejected_when_amount_exceeds_5x_income(self, auth_client):
+        """amount > 5x income → task rechaza la solicitud."""
+        app = self._create_app(auth_client, payload(amount_requested='100000.00', monthly_income='10000.00'))
+        from applications.tasks import process_application_mx
+        process_application_mx(str(app.id))
+
+        app.refresh_from_db()
+        assert app.status_code == 'rejected'
+
+    def test_co_task_transitions_to_verificacion_buro_on_success(self, auth_client):
+        app = self._create_app(auth_client, co_payload())
+        from applications.tasks import consulta_buro_co
+        consulta_buro_co(str(app.id))
+
+        app.refresh_from_db()
+        assert app.status_code == 'verificacion_buro'
+        assert BankProviderData.objects.filter(application=app).exists()
+
+    def test_co_task_transitions_to_rejected_when_debt_exceeds_40pct(self, auth_client):
+        """total_debt mock = 2000. income=1000 → 1000*0.4=400 < 2000 → rechazada."""
+        app = self._create_app(auth_client, co_payload(monthly_income='1000.00'))
+        from applications.tasks import consulta_buro_co
+        consulta_buro_co(str(app.id))
+
+        app.refresh_from_db()
+        assert app.status_code == 'rejected'
+
+    def test_task_noop_if_status_not_pending(self, auth_client):
+        """El task no hace nada si el status ya cambió (idempotencia)."""
+        app = self._create_app(auth_client)
+        # Transicionar manualmente a under_review
+        from applications.services import CreditApplicationService
+        CreditApplicationService.update_status(str(app.id), 'under_review', 'test')
+
+        from applications.tasks import process_application_mx
+        process_application_mx(str(app.id))
+
+        app.refresh_from_db()
+        assert app.status_code == 'under_review'  # no retrocedió a pending
 
 
 # ---------------------------------------------------------------------------
@@ -252,27 +304,25 @@ class TestList:
         assert len(res.json()['results']) == 1
 
     def test_list_filter_status_multiple(self, auth_client):
-        pending = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
-        reviewed = auth_client.post(LIST_URL, co_payload(), content_type='application/json').json()['id']
+        pending_id  = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        reviewed_id = auth_client.post(LIST_URL, payload(document_number='PERJ800101HDFRZN08'), content_type='application/json').json()['id']
 
-        patch_payload = {'status': 'under_review'}
-        auth_client.patch(DETAIL_URL(reviewed), patch_payload, content_type='application/json')
+        # Transicionar a under_review
+        auth_client.patch(DETAIL_URL(reviewed_id), {'status': 'under_review'}, content_type='application/json')
 
         res = auth_client.get(LIST_URL + '?status=pending&status=under_review')
         assert res.status_code == 200
         ids = {row['id'] for row in res.json()['results']}
-        assert pending in ids
-        assert reviewed in ids
+        assert pending_id in ids
+        assert reviewed_id in ids
 
     def test_list_filter_country_and_status(self, auth_client):
         mx_id = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
         co_id = auth_client.post(LIST_URL, co_payload(), content_type='application/json').json()['id']
 
-        auth_client.patch(
-            DETAIL_URL(co_id),
-            {'status': 'under_review'},
-            content_type='application/json',
-        )
+        # CO: pending → verificacion_buro → under_review
+        auth_client.patch(DETAIL_URL(co_id), {'status': 'verificacion_buro'}, content_type='application/json')
+        auth_client.patch(DETAIL_URL(co_id), {'status': 'under_review'}, content_type='application/json')
 
         res = auth_client.get(LIST_URL + '?country=CO&status=under_review')
         assert res.status_code == 200
@@ -417,24 +467,43 @@ class TestStatusUpdate:
         assert res.status_code == 200
         assert res.json()['status'] == 'under_review'
 
-    def test_update_pending_to_approved(self, auth_client):
+    def test_update_under_review_to_approved(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
         assert res.status_code == 200
+        assert res.json()['status'] == 'approved'
 
-    def test_update_pending_to_rejected(self, auth_client):
+    def test_update_under_review_to_rejected(self, auth_client):
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'rejected'}, content_type='application/json')
+        assert res.status_code == 200
+        assert res.json()['status'] == 'rejected'
+
+    def test_invalid_transition_pending_to_approved_returns_400(self, auth_client):
+        """MX: no hay transición directa pending → approved."""
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
+        assert res.status_code == 400
+
+    def test_valid_transition_pending_to_rejected(self, auth_client):
+        """pending → rejected es válido (el task o un admin puede rechazar desde el inicio)."""
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'rejected'}, content_type='application/json')
         assert res.status_code == 200
+        assert res.json()['status'] == 'rejected'
 
     def test_invalid_transition_approved_to_pending(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'pending'}, content_type='application/json')
         assert res.status_code == 400
 
     def test_invalid_transition_rejected_to_approved(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'rejected'}, content_type='application/json')
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
         assert res.status_code == 400
@@ -449,6 +518,33 @@ class TestStatusUpdate:
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
         assert res.status_code == 404
 
+    def test_co_custom_flow_pending_verificacion_buro_under_review(self, auth_client):
+        """CO tiene estado intermedio verificacion_buro antes de under_review."""
+        pk = auth_client.post(LIST_URL, co_payload(), content_type='application/json').json()['id']
+
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'verificacion_buro'}, content_type='application/json')
+        assert res.status_code == 200
+        assert res.json()['status'] == 'verificacion_buro'
+
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
+        assert res.status_code == 200
+        assert res.json()['status'] == 'under_review'
+
+    def test_co_cannot_skip_verificacion_buro(self, auth_client):
+        """CO: pending → under_review directo no está permitido."""
+        pk = auth_client.post(LIST_URL, co_payload(), content_type='application/json').json()['id']
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
+        assert res.status_code == 400
+
+    def test_transition_triggers_task_via_send_task(self, auth_client, mock_celery_send_task):
+        """Cuando pending → under_review en MX, update_status dispara process_application_mx."""
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        mock_celery_send_task.reset_mock()  # limpiar la llamada del create
+
+        auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
+
+        mock_celery_send_task.assert_called_once_with('process_application_mx', args=[pk])
+
 
 # ---------------------------------------------------------------------------
 # Historial de estado
@@ -456,20 +552,30 @@ class TestStatusUpdate:
 
 @pytest.mark.django_db
 class TestStatusHistory:
+    def test_create_registers_initial_history(self, auth_client):
+        """create() registra el historial inicial ('' → pending)."""
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        history = ApplicationStatusHistory.objects.filter(application_id=pk)
+        assert history.count() == 1
+        entry = history.first()
+        assert entry.from_status == ''
+        assert entry.to_status == 'pending'
+
     def test_status_update_creates_history_entry(self, auth_client, user):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
         auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
 
-        history = ApplicationStatusHistory.objects.filter(application_id=pk)
-        assert history.count() == 1
-        entry = history.first()
-        assert entry.from_status == 'pending'
-        assert entry.to_status == 'under_review'
-        assert entry.changed_by == user.email
+        history = ApplicationStatusHistory.objects.filter(application_id=pk).order_by('changed_at')
+        assert history.count() == 2  # initial ('' → pending) + patch (pending → under_review)
+        transition = history.last()
+        assert transition.from_status == 'pending'
+        assert transition.to_status == 'under_review'
+        assert transition.changed_by == user.email
 
     def test_multiple_transitions_create_multiple_entries(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
         auth_client.patch(DETAIL_URL(pk), {'status': 'under_review'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
 
-        assert ApplicationStatusHistory.objects.filter(application_id=pk).count() == 2
+        # initial + 2 transiciones = 3
+        assert ApplicationStatusHistory.objects.filter(application_id=pk).count() == 3

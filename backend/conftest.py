@@ -39,3 +39,43 @@ def setup_countries(db, locmem_cache):
     yield
 
     cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def setup_statuses(db, setup_countries):
+    """Create CountryStatus and StatusTransition records for MX and CO."""
+    from countries.models import Country, CountryStatus, StatusTransition
+
+    mx = Country.objects.get(code='MX')
+    co = Country.objects.get(code='CO')
+
+    # MX statuses
+    mx_pending      = CountryStatus.objects.create(country=mx, code='pending',      label='Pendiente',   is_initial=True,  is_terminal=False, order=1)
+    mx_under_review = CountryStatus.objects.create(country=mx, code='under_review', label='En revisión', is_initial=False, is_terminal=False, order=2)
+    mx_approved     = CountryStatus.objects.create(country=mx, code='approved',     label='Aprobada',    is_initial=False, is_terminal=True,  order=3)
+    mx_rejected     = CountryStatus.objects.create(country=mx, code='rejected',     label='Rechazada',   is_initial=False, is_terminal=True,  order=4)
+
+    # MX transitions
+    StatusTransition.objects.bulk_create([
+        StatusTransition(from_status=mx_pending,      to_status=mx_under_review, triggers_task='process_application_mx'),
+        StatusTransition(from_status=mx_pending,      to_status=mx_rejected,     triggers_task=''),
+        StatusTransition(from_status=mx_under_review, to_status=mx_approved,     triggers_task=''),
+        StatusTransition(from_status=mx_under_review, to_status=mx_rejected,     triggers_task=''),
+    ])
+
+    # CO statuses
+    co_pending      = CountryStatus.objects.create(country=co, code='pending',           label='Pendiente',            is_initial=True,  is_terminal=False, order=1)
+    co_buro         = CountryStatus.objects.create(country=co, code='verificacion_buro', label='Verificación en Buró', is_initial=False, is_terminal=False, order=2)
+    co_under_review = CountryStatus.objects.create(country=co, code='under_review',      label='En revisión',          is_initial=False, is_terminal=False, order=3)
+    co_approved     = CountryStatus.objects.create(country=co, code='approved',          label='Aprobada',             is_initial=False, is_terminal=True,  order=4)
+    co_rejected     = CountryStatus.objects.create(country=co, code='rejected',          label='Rechazada',            is_initial=False, is_terminal=True,  order=5)
+
+    # CO transitions
+    StatusTransition.objects.bulk_create([
+        StatusTransition(from_status=co_pending,      to_status=co_buro,         triggers_task='consulta_buro_co'),
+        StatusTransition(from_status=co_pending,      to_status=co_rejected,     triggers_task=''),
+        StatusTransition(from_status=co_buro,         to_status=co_under_review, triggers_task=''),
+        StatusTransition(from_status=co_buro,         to_status=co_rejected,     triggers_task=''),
+        StatusTransition(from_status=co_under_review, to_status=co_approved,     triggers_task=''),
+        StatusTransition(from_status=co_under_review, to_status=co_rejected,     triggers_task=''),
+    ])
