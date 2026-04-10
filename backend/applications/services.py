@@ -1,14 +1,10 @@
-from rest_framework.exceptions import ValidationError
+from celery import current_app as celery_app
 from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import ValidationError
 
-from countries.models import Country
-from countries.models import CountryValidation
+from countries.models import Country, CountryStatus, CountryValidation, StatusTransition
 from countries.validators.registry import get_validator
-from .models import (
-    ApplicationStatusHistory,
-    BankProviderData,
-    CreditApplication,
-)
+from .models import ApplicationStatusHistory, BankProviderData, CreditApplication
 
 
 class BankProviderError(Exception):
@@ -19,37 +15,31 @@ class CreditApplicationService:
 
     @staticmethod
     def create(data: dict, user) -> CreditApplication:
-        country = str(data['country']).strip().upper()
-        country_meta = Country.objects.filter(code=country, is_active=True).first()
+        country_code = str(data['country']).strip().upper()
+        country_meta = Country.objects.filter(code=country_code, is_active=True).first()
         if country_meta is None:
-            raise ValueError(f'País no soportado o inactivo: {country}')
+            raise ValueError(f'País no soportado o inactivo: {country_code}')
 
-        # 1. Resolver validator del país
+        # Resolver validator del país
         try:
-            validator = get_validator(country)
-        except ValueError as exc:
-            raise exc  # re-raise — view lo captura como 400
+            validator = get_validator(country_code)
+        except ValueError:
+            raise
 
-        # 2. Validar formato del documento
+        # Validar formato del documento (síncrono — solo regex, no llama al banco)
         document = data['document_number']
         valid, error_msg = validator.validate_document(document)
         if not valid:
             raise ValidationError({'document_number': error_msg})
 
-        # 3. Obtener datos del proveedor bancario (mock)
-        try:
-            bank_data = validator.fetch_bank_data(document)
-        except Exception as exc:
-            raise BankProviderError('No se pudo consultar el proveedor bancario') from exc
+        # Obtener status inicial del país
+        initial_status = CountryStatus.objects.filter(
+            country=country_meta, is_initial=True
+        ).first()
+        if initial_status is None:
+            raise ValueError(f'País {country_code} sin estado inicial configurado')
 
-        # 4. Validar reglas financieras del país
-        amount = float(data['amount_requested'])
-        income = float(data['monthly_income'])
-        valid, error_msg, error_field = validator.validate_financial_rules(amount, income, bank_data)
-        if not valid:
-            raise ValidationError({error_field: error_msg})
-
-        # 5. Persistir solicitud
+        # Persistir solicitud con status inicial
         application = CreditApplication.objects.create(
             user=user,
             country_ref=country_meta,
@@ -58,49 +48,61 @@ class CreditApplicationService:
             document_number=document,
             amount_requested=data['amount_requested'],
             monthly_income=data['monthly_income'],
-            status=validator.get_initial_status(),
+            status=initial_status,
         )
 
-        # 6. Persistir datos bancarios
-        BankProviderData.objects.create(
+        # Registrar historial del status inicial
+        ApplicationStatusHistory.objects.create(
             application=application,
-            provider_name=bank_data.provider_name,
-            account_status=bank_data.account_status,
-            total_debt=bank_data.total_debt,
-            credit_score=bank_data.credit_score,
-            raw_response=bank_data.raw_response,
+            from_status='',
+            to_status=initial_status.code,
+            changed_by=user.email,
         )
 
-        # 7. Registrar validaciones por regla
-        for rule in validator.get_validation_rules():
-            CountryValidation.objects.create(
-                application=application,
-                rule_name=rule,
-                passed=True,
-                detail='',
-            )
-
-        # 8. Disparar task asíncrono
-        from .tasks import process_application
-        process_application.delay(str(application.id))
+        # Disparar task inicial del país (consulta bancaria asíncrona)
+        initial_task = validator.get_initial_task()
+        if initial_task:
+            celery_app.send_task(initial_task, args=[str(application.id)])
 
         return application
 
     @staticmethod
     def update_status(
-        application_id: str, new_status: str, changed_by: str
+        application_id: str, new_status_code: str, changed_by: str
     ) -> CreditApplication:
         application = get_object_or_404(CreditApplication, id=application_id)
         from_status = application.status
+
+        if from_status and from_status.is_terminal:
+            raise ValueError(f"El estado '{from_status.code}' es terminal y no acepta transiciones.")
+
+        new_status = CountryStatus.objects.filter(
+            country=application.country_ref,
+            code=new_status_code,
+        ).first()
+        if new_status is None:
+            raise ValueError(f"Estado '{new_status_code}' no existe para este país.")
+
+        transition = StatusTransition.objects.filter(
+            from_status=from_status,
+            to_status=new_status,
+        ).first()
+        if transition is None:
+            from_code = from_status.code if from_status else '—'
+            raise ValueError(f"Transición '{from_code}' → '{new_status_code}' no permitida.")
 
         application.status = new_status
         application.save(update_fields=['status', 'updated_at'])
 
         ApplicationStatusHistory.objects.create(
             application=application,
-            from_status=from_status,
-            to_status=new_status,
+            from_status=from_status.code if from_status else '',
+            to_status=new_status.code,
             changed_by=changed_by,
         )
+
+        # Disparar task si la transición lo requiere
+        if transition.triggers_task:
+            celery_app.send_task(transition.triggers_task, args=[str(application.id)])
 
         return application
