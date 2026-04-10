@@ -230,6 +230,41 @@ class TestList:
         assert res.status_code == 200
         assert len(res.json()['results']) == 1
 
+    def test_list_filter_status_multiple(self, auth_client):
+        pending = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        reviewed = auth_client.post(LIST_URL, co_payload(), content_type='application/json').json()['id']
+
+        patch_payload = {'status': 'under_review'}
+        auth_client.patch(DETAIL_URL(reviewed), patch_payload, content_type='application/json')
+
+        res = auth_client.get(LIST_URL + '?status=pending&status=under_review')
+        assert res.status_code == 200
+        ids = {row['id'] for row in res.json()['results']}
+        assert pending in ids
+        assert reviewed in ids
+
+    def test_list_filter_country_and_status(self, auth_client):
+        mx_id = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        co_id = auth_client.post(LIST_URL, co_payload(), content_type='application/json').json()['id']
+
+        auth_client.patch(
+            DETAIL_URL(co_id),
+            {'status': 'under_review'},
+            content_type='application/json',
+        )
+
+        res = auth_client.get(LIST_URL + '?country=CO&status=under_review')
+        assert res.status_code == 200
+        rows = res.json()['results']
+        assert len(rows) == 1
+        assert rows[0]['id'] == co_id
+        assert rows[0]['country'] == 'CO'
+        assert rows[0]['status'] == 'under_review'
+
+        res_mx = auth_client.get(LIST_URL + '?country=MX&status=under_review')
+        assert res_mx.status_code == 200
+        assert not any(row['id'] == mx_id for row in res_mx.json()['results'])
+
     def test_list_empty_for_new_user(self, auth_client):
         res = auth_client.get(LIST_URL)
         assert res.status_code == 200
