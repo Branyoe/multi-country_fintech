@@ -291,6 +291,50 @@ class TestList:
         assert res.status_code == 200
         assert res.json()['count'] == 0
 
+    def test_list_ordering_by_full_name(self, auth_client):
+        auth_client.post(
+            LIST_URL,
+            payload(full_name='Zoe Alpha', document_number='PERJ800101HDFRZN08'),
+            content_type='application/json',
+        )
+        auth_client.post(
+            LIST_URL,
+            payload(full_name='Ana Beta', document_number='PERJ800101HDFRZN07'),
+            content_type='application/json',
+        )
+
+        asc = auth_client.get(LIST_URL + '?ordering=full_name')
+        assert asc.status_code == 200
+        asc_names = [row['full_name'] for row in asc.json()['results']]
+        assert asc_names[:2] == ['Ana Beta', 'Zoe Alpha']
+
+        desc = auth_client.get(LIST_URL + '?ordering=-full_name')
+        assert desc.status_code == 200
+        desc_names = [row['full_name'] for row in desc.json()['results']]
+        assert desc_names[:2] == ['Zoe Alpha', 'Ana Beta']
+
+    def test_list_ordering_by_country_code(self, auth_client):
+        auth_client.post(
+            LIST_URL,
+            payload(country='MX', document_number='PERJ800101HDFRZN01'),
+            content_type='application/json',
+        )
+        auth_client.post(
+            LIST_URL,
+            co_payload(document_number='1234567891'),
+            content_type='application/json',
+        )
+
+        asc = auth_client.get(LIST_URL + '?ordering=country_ref__code')
+        assert asc.status_code == 200
+        asc_countries = [row['country'] for row in asc.json()['results']]
+        assert asc_countries[:2] == ['CO', 'MX']
+
+        desc = auth_client.get(LIST_URL + '?ordering=-country_ref__code')
+        assert desc.status_code == 200
+        desc_countries = [row['country'] for row in desc.json()['results']]
+        assert desc_countries[:2] == ['MX', 'CO']
+
 
 # ---------------------------------------------------------------------------
 # Detalle
