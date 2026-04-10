@@ -42,8 +42,9 @@ class BaseCountryValidator(ABC):
             return False, meta.document_hint
         return True, ''
 
-    def get_initial_status(self) -> str:
-        return 'pending'
+    def get_initial_task(self) -> str:
+        """Nombre del task Celery a disparar justo después de crear la solicitud."""
+        return ''
 
     def get_validation_rules(self) -> list[str]:
         return []

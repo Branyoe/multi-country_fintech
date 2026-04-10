@@ -29,5 +29,8 @@ class MXCountryValidator(BaseCountryValidator):
             return False, 'El monto supera el límite permitido (máx. 5× el ingreso mensual)', 'amount_requested'
         return True, '', ''
 
+    def get_initial_task(self) -> str:
+        return 'process_application_mx'
+
     def get_validation_rules(self) -> list[str]:
         return ['curp_format', 'monto_5x_ingreso']
