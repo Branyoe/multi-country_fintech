@@ -1,38 +1,32 @@
-.PHONY: dev dev-build dev-down dev-clean dev-full-restart prod prod-build prod-down prod-clean prod-full-restart logs-dev logs-prod
+.PHONY: dev dev-down dev-clean prod prod-down prod-clean logs-dev logs-prod
+
+DC_DEV  = docker compose -f docker-compose.dev.yml
+DC_PROD = docker compose -f docker-compose.prod.yml
 
 # ── Dev (hot-reload) ───────────────────────────────────────────────────────────
-dev-build:
-	docker compose -f docker-compose.dev.yml build
-
 dev:
-	docker compose -f docker-compose.dev.yml up
+	@test -f backend/.env.dev || (cp backend/.env.example backend/.env.dev && echo "→ Created backend/.env.dev")
+	$(DC_DEV) up --build
 
 dev-down:
-	docker compose -f docker-compose.dev.yml down
+	$(DC_DEV) down
 
 dev-clean:
-	docker compose -f docker-compose.dev.yml down -v
+	$(DC_DEV) down -v
 
-dev-full-restart: dev-clean dev-build dev
+logs-dev:
+	$(DC_DEV) logs -f
 
 # ── Prod ───────────────────────────────────────────────────────────────────────
-prod-build:
-	docker compose -f docker-compose.prod.yml build
-
 prod:
-	docker compose -f docker-compose.prod.yml up
+	@test -f backend/.env.prod || (cp backend/.env.prod.example backend/.env.prod && echo "→ Created backend/.env.prod")
+	$(DC_PROD) up --build
 
 prod-down:
-	docker compose -f docker-compose.prod.yml down
+	$(DC_PROD) down
 
 prod-clean:
-	docker compose -f docker-compose.prod.yml down -v
-
-prod-full-restart: prod-clean prod-build prod
-
-# ── Utilidades ─────────────────────────────────────────────────────────────────
-logs-dev:
-	docker compose -f docker-compose.dev.yml logs -f
+	$(DC_PROD) down -v
 
 logs-prod:
-	docker compose -f docker-compose.prod.yml logs -f
+	$(DC_PROD) logs -f
