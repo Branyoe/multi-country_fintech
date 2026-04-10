@@ -53,9 +53,10 @@ class BankProviderData(models.Model):
 class ApplicationStatusHistory(models.Model):
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     application = models.ForeignKey(CreditApplication, on_delete=models.PROTECT, related_name='status_history')
-    from_status = models.CharField(max_length=20)
-    to_status   = models.CharField(max_length=20)
+    from_status = models.CharField(max_length=50)
+    to_status   = models.CharField(max_length=50)
     changed_by  = models.CharField(max_length=255)
+    metadata    = models.JSONField(default=dict, blank=True)
     changed_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
