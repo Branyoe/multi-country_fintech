@@ -58,6 +58,8 @@ services:
       dockerfile: Dockerfile.dev
     command: celery -A config worker --loglevel=debug --concurrency=1
     env_file: ./backend/.env.dev
+    environment:
+      - CHANNEL_LAYER_URL=redis://redis:6379/2
     volumes:
       - ./backend:/app
       - /app/.venv

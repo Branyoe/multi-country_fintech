@@ -39,6 +39,10 @@ class CreditApplicationService:
     def _publish_timeline_event(application_id: str, payload: dict) -> None:
         channel_layer = get_channel_layer()
         if channel_layer is None:
+            logger.warning(
+                'timeline-event-skip-channel-layer-unavailable',
+                extra={'application_id': application_id},
+            )
             return
         try:
             async_to_sync(channel_layer.group_send)(
@@ -48,7 +52,14 @@ class CreditApplicationService:
                     'data': payload,
                 },
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                'timeline-event-publish-failed',
+                extra={
+                    'application_id': application_id,
+                    'error': str(exc),
+                },
+            )
             return
 
     @staticmethod

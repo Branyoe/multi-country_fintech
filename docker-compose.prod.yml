@@ -49,6 +49,8 @@ services:
       dockerfile: Dockerfile.prod
     command: celery -A config worker --loglevel=info --concurrency=2
     env_file: ./backend/.env.prod
+    environment:
+      - CHANNEL_LAYER_URL=redis://redis:6379/2
     depends_on:
       api:
         condition: service_started
