@@ -21,6 +21,7 @@ export default defineConfig({
       '/api':    { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
       '/admin':  { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
       '/static': { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
+      '/ws':     { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true, ws: true },
     },
   },
   resolve: {

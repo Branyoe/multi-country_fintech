@@ -38,6 +38,8 @@ services:
       dockerfile: Dockerfile.dev
     command: sh entrypoint.dev.sh
     env_file: ./backend/.env.dev
+    environment:
+      - CHANNEL_LAYER_URL=redis://redis:6379/2
     volumes:
       - ./backend:/app
       - /app/.venv
