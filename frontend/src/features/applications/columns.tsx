@@ -45,10 +45,12 @@ export function createApplicationColumns(
   {
     accessorKey: 'full_name',
     header: 'Solicitante',
+    meta: { orderingKey: 'full_name' },
   },
   {
     accessorKey: 'country',
     header: 'País',
+    meta: { orderingKey: 'country_ref__code' },
     cell: ({ getValue }: Cell) => {
       const val = getValue() as ApplicationCountry
       return (
@@ -83,6 +85,7 @@ export function createApplicationColumns(
   {
     accessorKey: 'status',
     header: 'Estado',
+    meta: { orderingKey: 'status' },
     cell: ({ getValue }: Cell) => {
       const status = getValue() as ApplicationStatus
       return (
