@@ -25,8 +25,8 @@ class BaseWorkflow(ABC):
         """
 
     @abstractmethod
-    def validate(self, application: CreditApplication, bank_data) -> bool:
+    def validate(self, application: CreditApplication, bank_data) -> tuple[bool, str]:
         """Run country-specific decision validation.
 
-        Returns True for approval and False for rejection.
+        Returns (approved, rejection_reason). reason is '' when approved.
         """
