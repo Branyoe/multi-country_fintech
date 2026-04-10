@@ -5,45 +5,46 @@ flowchart TD
     subgraph docker["Docker Compose"]
 
         subgraph fe_layer["Frontend — puerto 3000"]
-            NG["Nginx — SPA React — proxy /api/ /admin/ /static/"]
+            NG["Nginx — SPA React -- /api/ /admin/ /static/ -- /ws/ WebSocket Upgrade"]
         end
 
-        subgraph api_layer["Backend"]
-            API["Django REST API — Gunicorn — JWT · Strategy por país · Whitenoise"]
-            CL["Celery Worker x2 — Riesgo · Auditoría · Webhooks"]
-            CH["Django Channels — WebSockets realtime (futuro)"]
+        subgraph api_layer["Backend — Daphne ASGI — puerto 8000"]
+            API["Django REST Framework -- JWT · Strategy por país · Whitenoise"]
+            CH["Django Channels -- WebSockets timeline en tiempo real"]
+        end
+
+        subgraph workers_layer["Workers"]
+            CL["Celery Worker x2 -- Validación · Buró bancario · Reglas · Webhooks"]
         end
 
         subgraph data_layer["Datos"]
-            RD["Redis — puerto 6379 — Broker Celery · caché · channel layer"]
-            PG["PostgreSQL 16 — puerto 5433 — Triggers · Índices · Particionamiento"]
+            RD["Redis — puerto 6379 -- DB0: broker · DB1: caché · DB2: channel layer"]
+            PG["PostgreSQL 16 — puerto 5432"]
         end
 
     end
 
     subgraph ext["Servicios externos"]
         BK["Proveedores bancarios — mock MX · CO"]
-        WH["Webhooks — Entrantes / Salientes"]
+        WH["Webhooks — Salientes decisión final"]
     end
 
     USER --> NG
-    NG -- "/api/ proxy" --> API
-    NG -- "/admin/ proxy" --> API
-    NG -- "/static/ proxy — Whitenoise" --> API
-    NG -- "GET / — SPA estático" --> NG
+    NG -- "HTTP /api/ /admin/ /static/" --> API
+    NG -- "WS /ws/ Upgrade" --> CH
     API --> PG
     API --> RD
-    API --> BK
-    RD --> CL
     CL --> PG
+    CL --> BK
     CL --> WH
-    PG -. "pg_notify trigger (futuro)" .-> CL
+    CL --> RD
     CH --> RD
+    RD --> CL
 
     style USER fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
     style NG fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
     style API fill:#CECBF6,stroke:#534AB7,color:#26215C
-    style CH fill:#CECBF6,stroke:#534AB7,color:#26215C,stroke-dasharray: 6 4
+    style CH fill:#CECBF6,stroke:#534AB7,color:#26215C
     style RD fill:#FAC775,stroke:#854F0B,color:#412402
     style CL fill:#F5C4B3,stroke:#993C1D,color:#4A1B0C
     style PG fill:#B5D4F4,stroke:#185FA5,color:#042C53
