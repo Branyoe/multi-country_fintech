@@ -14,5 +14,21 @@
       "groups": [],
       "user_permissions": []
     }
+  },
+  {
+    "model": "users.user",
+    "pk": "3ed48247-1adf-4726-a60b-c04e810094f6",
+    "fields": {
+      "password": "pbkdf2_sha256$1200000$gkTiG5CuKwqm8VHJGVQNyB$Lws8+xDSmODgBEHJe12QGhPXtl/CrFTzyvjy9nguW/0=",
+      "last_login": null,
+      "is_superuser": false,
+      "email": "user@dev.local",
+      "role": "user",
+      "is_active": true,
+      "is_staff": false,
+      "created_at": "2026-04-08T00:00:00.000Z",
+      "groups": [],
+      "user_permissions": []
+    }
   }
 ]

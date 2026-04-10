@@ -9,227 +9,106 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 | **Frontend** | Vite 8 + React 19 + TypeScript + Tailwind v4 + shadcn/ui |
 | **Backend** | Django 6 + Django REST Framework + SimpleJWT + Whitenoise |
 | **Tareas async** | Celery (workers) + Redis |
-| **Base de datos** | PostgreSQL 16 (Docker) / SQLite (dev local sin Docker) |
+| **Base de datos** | PostgreSQL 16 |
 | **Contenedores** | Docker Compose + Make |
 
 ---
 
-## Entornos Docker
+## Instalación
 
-El proyecto tiene dos configuraciones Docker:
+Prerrequisitos: Docker Desktop y `make`. Docker es el único entorno soportado.
 
-| | **Dev** (`docker-compose.dev.yml`) | **Prod** (`docker-compose.prod.yml`) |
+```bash
+make dev    # dev: hot-reload
+make prod   # prod: Daphne + Nginx, imágenes compiladas
+```
+
+El `.env` se crea automáticamente en el primer arranque. Acceso: `http://localhost:3000`.
+
+### Diferencias entre entornos
+
+| | Dev | Prod |
 |---|---|---|
-| Backend server | Django `runserver` + auto-reload | Gunicorn (2 workers) |
-| Frontend | Vite dev server + HMR | Nginx sirviendo build estático |
-| Static files | Django debug | Whitenoise vía Gunicorn |
-| Hot-reload | Sí (backend + frontend) | No |
+| Backend | `runserver` + auto-reload | Daphne ASGI (HTTP + WebSockets) |
+| Frontend | Vite HMR | Nginx + build estático |
 | Celery workers | 1 réplica | 2 réplicas |
 | Base de datos | `bravo_dev` | `bravo` |
 
 > No levantar ambos entornos simultáneamente — comparten los mismos puertos.
 
----
-
-## Desarrollo con Docker (recomendado)
-
-Todos los servicios corren en contenedores con hot-reload: los cambios de código se reflejan instantáneamente sin reconstruir imágenes.
-
-**Prerrequisitos:** Docker Desktop + `make`.
+### Comandos
 
 ```bash
-# 1. Copiar variables de entorno para dev
-cp backend/.env.example backend/.env.dev
-
-# 2. Construir imágenes (solo la primera vez o al cambiar deps)
-make dev-build
-
-# 3. Levantar el entorno
-make dev
-```
-
-**Accesos:**
-
-| Servicio | URL |
-|---|---|
-| Frontend (HMR) | http://localhost:3000 |
-| API directa | http://localhost:8000/api/ |
-| Django Admin | http://localhost:8000/admin/ |
-| PostgreSQL | `localhost:5432` — DB: `bravo_dev`, user/pass: `bravo/bravo` |
-| Redis | `localhost:6379` |
-
-**Crear superusuario:**
-
-```bash
-docker compose -f docker-compose.dev.yml exec api python manage.py createsuperuser
-```
-
-**Hot-reload:**
-
-| Servicio | Comportamiento |
-|---|---|
-| Backend | `runserver` detecta cambios en `.py` y recarga automáticamente |
-| Frontend | Vite HMR actualiza el browser sin recargar la página |
-| Celery | Requiere reinicio manual: `docker compose -f docker-compose.dev.yml restart celery_worker` |
-
----
-
-## Producción local con Docker
-
-Simula el entorno productivo: Gunicorn + Nginx, imágenes compiladas, sin hot-reload.
-
-```bash
-# 1. Copiar variables de entorno
-cp backend/.env.example backend/.env.prod
-
-# 2. Construir y levantar
-make prod-build
-make prod
-```
-
-**Accesos:**
-
-| Servicio | URL |
-|---|---|
-| Frontend (Nginx) | http://localhost:3000 |
-| Django Admin | http://localhost:3000/admin/ |
-| PostgreSQL | `localhost:5432` — DB: `bravo`, user/pass: `bravo/bravo` |
-| Redis | `localhost:6379` |
-
-> El primer arranque aplica migraciones, carga el usuario admin (`admin@dev.local` / `admin123`) y recolecta los archivos estáticos automáticamente.
-
----
-
-## Comandos Make
-
-```bash
-# ── Dev ──────────────────────────────────────────────────────────────────────
-make dev-build      # construir imágenes dev (primera vez o al cambiar deps)
-make dev            # levantar entorno dev con hot-reload
-make dev-down       # detener entorno dev
-make dev-clean      # detener + eliminar volúmenes dev (reset BD)
-make logs-dev       # seguir logs del entorno dev
-
-# ── Prod ─────────────────────────────────────────────────────────────────────
-make prod-build     # construir imágenes prod
-make prod           # levantar entorno prod
-make prod-down      # detener entorno prod
-make prod-clean     # detener + eliminar volúmenes prod (reset BD)
-make logs-prod      # seguir logs del entorno prod
+make dev / prod              # construye e inicia (crea .env si falta)
+make dev-down / prod-down    # detener
+make dev-clean / prod-clean  # detener + eliminar volúmenes (reset BD)
+make logs-dev / logs-prod    # tail de logs
 ```
 
 ---
 
-## Dev local — sin Docker
+## API
 
-Para desarrollo ultra-rápido con SQLite y sin contenedores.
-
-**Prerrequisitos:** Python 3.13+, [uv](https://docs.astral.sh/uv/getting-started/installation/), Node 22+.
-
-#### Backend
-
-```bash
-# Primera vez: dependencias + migraciones + fixtures
-bash backend/gen.sh
-
-# Servidor de desarrollo
-uv run backend/manage.py runserver
-# → http://localhost:8000
-```
-
-#### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-# → http://localhost:3000
-```
-
-El proxy de Vite (`/api/`, `/admin/`, `/static/`) apunta a `http://localhost:8000` por defecto.
-
-**Variables de entorno** (`backend/.env`):
-```env
-SECRET_KEY=dev-secret
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000
-CELERY_BROKER_URL=redis://localhost:6379/0
-```
-
----
-
-## Tests
-
-### Backend (pytest)
-
-```bash
-uv run pytest -v
-uv run pytest applications/tests/ -v
-uv run pytest users/tests/ -v
-```
-
-### Frontend — E2E (Playwright)
-
-Requiere el backend corriendo en `:8000`.
-
-```bash
-cd frontend
-npm run test:e2e
-npm run test:e2e:ui   # modo UI interactivo
-```
-
----
-
-## API — endpoints principales
-
-Base URL (Docker dev): `http://localhost:8000/api/`
-Base URL (Docker prod): `http://localhost:3000/api/`
+Base URL: `http://localhost:8000/api/` (dev) · `http://localhost:3000/api/` (prod)
 
 | Método | Endpoint | Auth | Descripción |
 |---|---|---|---|
 | POST | `/auth/signup/` | Libre | Registro |
 | POST | `/auth/token/` | Libre | Login → access + refresh |
 | POST | `/auth/token/refresh/` | Libre | Renovar access token |
+| GET | `/auth/me/` | Bearer | Perfil del usuario autenticado |
+| GET | `/countries/` | Libre | Metadata de países disponibles |
 | GET | `/applications/` | Bearer | Listar solicitudes |
 | POST | `/applications/` | Bearer | Crear solicitud |
 | GET | `/applications/{id}/` | Bearer | Detalle |
 | PATCH | `/applications/{id}/` | Bearer | Actualizar estado |
-| GET | `/applications/countries/` | Libre | Metadata de países disponibles |
 
-Header: `Authorization: Bearer <access_token>`
+Header de autenticación: `Authorization: Bearer <access_token>`
+
+---
+
+## Usuarios y roles
+
+Dos roles: `user` (por defecto) y `admin`.
+
+| Capacidad | `user` | `admin` |
+|---|---|---|
+| Crear solicitudes | Sí | Sí |
+| Ver sus propias solicitudes | Sí | Sí |
+| Ver solicitudes de otros usuarios | No | Sí |
+| Actualizar estado de cualquier solicitud | No | Sí |
+
+**Asignación de rol:** el signup público siempre crea `role=user`; aunque el payload incluya `role=admin`, el campo se ignora. Los usuarios admin se crean desde el Django Admin o directamente en BD.
+
+**Indicador en el frontend:** el rol se muestra como etiqueta junto al email en el header (`Admin` variante `default`, `Usuario` variante `secondary`). Se obtiene de `GET /auth/me/` al arrancar la app y se persiste en Zustand.
+
+### Usuarios de fixtures
+
+Cargados automáticamente en cada arranque (idempotente):
+
+| Email | Contraseña | Rol |
+|---|---|---|
+| `admin@dev.local` | `admin123` | `admin` |
+| `user@dev.local` | `user1234` | `user` |
 
 ---
 
 ## Sistema de países dinámico
 
-Los países disponibles para crear solicitudes de crédito se gestionan desde la base de datos, **sin tocar el código del frontend**.
+Los países disponibles se gestionan desde la base de datos, sin tocar el código del frontend.
 
-### Cómo funciona
+**Flujo:** `Country (BD) → cache Redis → GET /api/countries/ → Frontend`
 
-```
-BD → modelo Country → cache Redis → GET /api/applications/countries/ → Frontend
-```
+- La metadata de cada país (código, tipo de documento, regex de validación) se cachea en Redis al primer acceso. Las peticiones siguientes no tocan la BD.
+- Al guardar o eliminar un `Country` desde el Admin, una señal `post_save` invalida el cache automáticamente.
+- Si Redis no está disponible, `IGNORE_EXCEPTIONS: True` hace fallback silencioso a consulta directa a BD.
 
-1. El modelo `Country` almacena la metadata de cada país: código, nombre, tipo de documento, hint, ejemplo y regex de validación.
-2. El backend cachea esa información en Redis al primer acceso. Las siguientes peticiones no tocan la base de datos.
-3. Cuando un administrador edita o elimina un país desde el **Django Admin**, una señal `post_save` invalida el cache automáticamente.
-4. El frontend consulta el endpoint al cargar la app y usa esa respuesta para: poblar el selector de países, mostrar la descripción del formato de documento y construir los filtros de la tabla.
-
-### Agregar un país nuevo
-
-1. Crea la entrada en la BD desde el Admin (`/admin/applications/country/`) o añadela a `backend/fixtures/countries.json`.
-2. Crea su clase `XYZCountryValidator` en `backend/common/applications/countries/` con las reglas de validación del documento y las reglas financieras.
-3. Registra el validator en `backend/common/applications/countries/registry.py`.
+**Para agregar un país:**
+1. Crear la entrada en el Admin o en `backend/fixtures/countries.json`.
+2. Crear `XYZCountryValidator` en `countries/validators/` con las reglas de documento y financieras.
+3. Registrarlo en `countries/validators/registry.py`.
 
 No se requiere ningún cambio en el frontend.
-
-### Por qué esta decisión
-
-- **Sin duplicación**: antes, los nombres y formatos de países estaban hardcodeados en 5 lugares del frontend y en el backend. Cualquier cambio requería desplegar ambos lados.
-- **Editable sin deploy**: labels, hints y ejemplos son datos, no código. Un admin puede ajustarlos en caliente.
-- **Sin costo en rendimiento**: el cache Redis sirve la metadata sin queries a BD en condiciones normales. Si Redis no está disponible, `IGNORE_EXCEPTIONS: True` hace que las operaciones fallen silenciosamente y el sistema siga funcionando (con queries directas a BD como fallback).
 
 ---
 
@@ -237,34 +116,122 @@ No se requiere ningún cambio en el frontend.
 
 ```
 bravo-test/
-├── backend/               # Django REST API
-│   ├── config/            # Settings, URLs, Celery
-│   ├── users/             # Auth (JWT, signup, login)
-│   ├── applications/      # Solicitudes de crédito (CRUD)
-│   ├── common/            # Código compartido (validators por país)
-│   ├── fixtures/          # Datos iniciales (admin)
-│   ├── Dockerfile.prod    # Imagen producción (multi-stage)
-│   ├── Dockerfile.dev     # Imagen desarrollo (deps only, sin código)
-│   ├── entrypoint.prod.sh # migrate → loaddata → collectstatic → gunicorn
-│   ├── .env.example       # Plantilla de variables de entorno
-│   ├── .env.prod        # Config para prod Docker (no commitear)
-│   └── .env.dev           # Config para dev Docker (no commitear)
-├── frontend/              # Vite + React
+├── backend/
+│   ├── config/            # Settings, URLs, Celery, ASGI
+│   ├── users/             # Auth JWT (signup, login, me)
+│   ├── countries/         # Country, CountryStatus, validators por país
+│   ├── applications/      # CreditApplication, servicios, tasks, workflows
+│   ├── fixtures/          # Datos iniciales (users, countries, statuses)
+│   ├── Dockerfile.dev / Dockerfile.prod
+│   ├── entrypoint.prod.sh # migrate → loaddata → collectstatic → daphne
+│   └── .env.example / .env.prod.example
+├── frontend/
 │   ├── src/
 │   │   ├── features/      # auth, applications
 │   │   ├── components/    # ui, data-table
-│   │   ├── lib/           # api.ts (axios), bootstrap.ts
-│   │   └── app/           # router, páginas
+│   │   └── lib/           # api.ts (axios), bootstrap.ts
 │   ├── e2e/               # Tests Playwright
-│   ├── Dockerfile.prod    # Imagen producción (build + Nginx)
-│   ├── Dockerfile.dev     # Imagen desarrollo (node_modules only)
-│   └── nginx.prod.conf    # SPA + proxy /api/ /admin/ /static/
+│   ├── Dockerfile.dev / Dockerfile.prod
+│   └── nginx.prod.conf    # SPA + proxy /api/ /admin/ /static/ /ws/
+├── k8s/                   # Manifests de Kubernetes
 ├── docs/
 │   ├── arquitecture/      # Diagrama de arquitectura (.mmd)
-│   ├── database/          # ERD — fuente de verdad del esquema
-│   └── flows/             # Flujos auth, solicitud de crédito
-├── docker-compose.prod.yml     # Orquestación producción
-├── docker-compose.dev.yml # Orquestación desarrollo (hot-reload)
-├── Makefile               # Shortcuts: make dev / make prod
-└── CLAUDE.md              # Instrucciones para el asistente IA
+│   ├── database/          # ERD
+│   └── flows/             # Flujos de auth, solicitudes, cache, WebSocket
+├── docker-compose.dev.yml
+├── docker-compose.prod.yml
+└── Makefile
 ```
+
+---
+
+## Tests
+
+### Backend
+
+```bash
+cd backend && uv run pytest -v
+cd backend && uv run pytest applications/ -v
+```
+
+### Frontend E2E (Playwright)
+
+Requiere el backend corriendo en `:8000`.
+
+```bash
+cd frontend && npm run test:e2e
+cd frontend && npm run test:e2e:ui   # modo UI interactivo
+```
+
+---
+
+## Kubernetes
+
+Namespace: `bravo`. Requiere un controlador Ingress nginx instalado en el cluster.
+
+### Estructura de k8s/
+
+```
+k8s/
+├── namespace.yaml
+├── config/configmap-api.yaml       # Variables no sensibles (DB_HOST, Redis URLs, ALLOWED_HOSTS…)
+├── secrets/secret-api.yaml         # Template — completar y NO commitear con valores reales
+├── storage/pvc-postgres.yaml       # PVC 10Gi ReadWriteOnce para Postgres
+├── postgres/                       # StatefulSet + Service headless
+├── redis/                          # Deployment (Recreate) + Service
+├── api/
+│   ├── job-migrate.yaml            # Corre migrate+loaddata una sola vez antes del Deployment
+│   ├── deployment-api.yaml         # Daphne ASGI, 2 réplicas
+│   └── service-api.yaml
+├── celery/deployment-celery.yaml   # 2 réplicas × concurrency 2, sin Service
+├── frontend/                       # Nginx SPA, 2 réplicas + Service
+└── ingress/ingress.yaml            # Todo entra por frontend:80 — Nginx proxea /api/ /ws/ internamente
+```
+
+**Notas:**
+- `api` y `celery-worker` usan la misma imagen; `celery` solo cambia el `command`.
+- Las migrations corren en `job-migrate.yaml` (no en el Deployment) para evitar race condition con 2 réplicas arrancando en paralelo.
+- El Ingress apunta todo a `frontend:80`. El Nginx interno gestiona `/api/`, `/ws/` y `/static/` con los headers de WebSocket correctos.
+- Redis usa DB0 (broker), DB1 (caché) y DB2 (channel layer).
+- `storageClassName` en el PVC está sin hardcodear; usar el default del cluster o sobreescribir según proveedor.
+
+### Simulación local con minikube
+
+Requiere minikube (`winget install Kubernetes.minikube`) y Docker Desktop.
+
+```bash
+# Arrancar cluster
+minikube start
+minikube addons enable ingress
+
+# Apuntar Docker al daemon de minikube
+minikube -p minikube docker-env --shell powershell | Invoke-Expression  # PowerShell
+eval $(minikube docker-env)                                               # bash/WSL
+
+# Construir imágenes localmente (sin push a registry)
+docker build -t bravo-api:local      ./backend  -f ./backend/Dockerfile.prod
+docker build -t bravo-frontend:local ./frontend -f ./frontend/Dockerfile.prod \
+  --build-arg VITE_API_BASE_URL=/api
+
+# Reemplazar en los manifests:
+#   REPLACE_WITH_YOUR_REGISTRY/bravo-api:TAG      → bravo-api:local
+#   REPLACE_WITH_YOUR_REGISTRY/bravo-frontend:TAG → bravo-frontend:local
+# Reemplazar REPLACE_WITH_YOUR_DOMAIN → bravo.local (configmap, ingress)
+# Completar k8s/secrets/secret-api.yaml
+
+# Aplicar
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secrets/ -f k8s/config/ -f k8s/storage/
+kubectl apply -f k8s/postgres/ -f k8s/redis/
+kubectl wait --for=condition=ready pod -l app=postgres -n bravo --timeout=120s
+kubectl apply -f k8s/api/job-migrate.yaml
+kubectl wait --for=condition=complete job/migrate -n bravo --timeout=120s
+kubectl apply -f k8s/api/ -f k8s/celery/ -f k8s/frontend/ -f k8s/ingress/
+
+# Exponer Ingress (mantener corriendo en otra terminal)
+minikube tunnel
+```
+
+Agregar `127.0.0.1 bravo.local` en `C:\Windows\System32\drivers\etc\hosts`. Acceso: `http://bravo.local`.
+
+Para detener: `minikube stop` — Para destruir todo: `minikube delete`.

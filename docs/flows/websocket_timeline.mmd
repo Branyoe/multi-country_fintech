@@ -1,0 +1,55 @@
+flowchart TD
+
+    %% ── Conexión WebSocket ──────────────────────────────────────
+    FE(["Frontend -- ws://.../ws/applications/{id}/?token=..."])
+
+    UUID_OK{"¿application_id UUID válido?"}
+    E4400["close(4400) — ID inválido"]
+
+    HAS_TOKEN{"¿token en query string?"}
+    E4401_T["close(4401) — sin token"]
+
+    AUTH_JWT["JWTAuthentication -- valida access token"]
+    AUTH_OK{"¿Token válido?"}
+    E4401_J["close(4401) — token inválido"]
+
+    OWNS{"¿user_id === application.user_id?"}
+    E4403["close(4403) — no autorizado"]
+
+    JOIN["channel_layer.group_add -- grupo: application_{id}"]
+    CONNECTED(["Conexión aceptada"])
+
+    FE --> UUID_OK
+    UUID_OK -- "No" --> E4400
+    UUID_OK -- "Sí" --> HAS_TOKEN
+    HAS_TOKEN -- "No" --> E4401_T
+    HAS_TOKEN -- "Sí" --> AUTH_JWT
+    AUTH_JWT --> AUTH_OK
+    AUTH_OK -- "No" --> E4401_J
+    AUTH_OK -- "Sí" --> OWNS
+    OWNS -- "No" --> E4403
+    OWNS -- "Sí" --> JOIN --> CONNECTED
+
+    %% ── Publicación de eventos de timeline ──────────────────────
+    TRANSITION["update_status() -- crea ApplicationStatusHistory"]
+    ON_COMMIT["transaction.on_commit -- _publish_timeline_event()"]
+    PUBLISH["channel_layer.group_send -- grupo: application_{id}"]
+    CONSUMER["ApplicationTimelineConsumer -- timeline_event handler"]
+    SEND_FE(["send_json -- event: timeline.transition.created"])
+
+    CONNECTED -. "escucha eventos" .-> CONSUMER
+    TRANSITION --> ON_COMMIT --> PUBLISH --> CONSUMER --> SEND_FE
+
+    style FE fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style CONNECTED fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style SEND_FE fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style E4400 fill:#F09595,stroke:#A32D2D,color:#501313
+    style E4401_T fill:#F09595,stroke:#A32D2D,color:#501313
+    style E4401_J fill:#F09595,stroke:#A32D2D,color:#501313
+    style E4403 fill:#F09595,stroke:#A32D2D,color:#501313
+    style AUTH_JWT fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style JOIN fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style PUBLISH fill:#FAC775,stroke:#854F0B,color:#412402
+    style CONSUMER fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style TRANSITION fill:#B5D4F4,stroke:#185FA5,color:#042C53
+    style ON_COMMIT fill:#B5D4F4,stroke:#185FA5,color:#042C53

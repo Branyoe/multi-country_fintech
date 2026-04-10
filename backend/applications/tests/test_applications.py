@@ -58,6 +58,10 @@ def user(db):
 def other_user(db):
     return User.objects.create_user(email='other@test.com', password='pass1234')
 
+@pytest.fixture
+def admin_user(db):
+    return User.objects.create_user(email='admin@test.com', password='pass1234', role='admin')
+
 def _make_auth_client(email, password):
     c = Client()
     res = c.post(
@@ -77,15 +81,21 @@ def auth_client(user):
 def other_auth_client(other_user):
     return _make_auth_client('other@test.com', 'pass1234')
 
+@pytest.fixture
+def admin_auth_client(admin_user):
+    return _make_auth_client('admin@test.com', 'pass1234')
+
 @pytest.fixture(autouse=True)
 def mock_workflow_tasks():
     """Avoid real async dispatch and assert workflow side effects explicitly."""
     with (
+        patch('applications.tasks.validating_document_task.delay') as validating_delay,
         patch('applications.tasks.fetching_bank_data_task.delay') as fetching_delay,
         patch('applications.tasks.validate_country_rules_task.delay') as validate_delay,
         patch('applications.tasks.notify_final_decision_task.delay') as notify_delay,
     ):
         yield {
+            'validating': validating_delay,
             'fetching': fetching_delay,
             'validate': validate_delay,
             'notify': notify_delay,
@@ -118,10 +128,10 @@ class TestCreate:
         assert res.status_code == 201
         data = res.json()
         assert data['country'] == 'MX'
-        assert data['status'] == 'fetching_bank_data'
+        assert data['status'] == 'validating_document'
         assert data['document_type'] == 'CURP'
         assert 'id' in data
-        mock_workflow_tasks['fetching'].assert_called_once_with(data['id'])
+        mock_workflow_tasks['validating'].assert_called_once_with(data['id'])
 
     def test_create_co_success(self, auth_client, mock_workflow_tasks):
         res = auth_client.post(LIST_URL, co_payload(), content_type='application/json')
@@ -132,9 +142,9 @@ class TestCreate:
         assert data['document_type'] == 'CC'
         mock_workflow_tasks['fetching'].assert_called_once_with(data['id'])
 
-    def test_create_sets_status_created(self, auth_client):
+    def test_create_mx_boots_into_validating_document(self, auth_client):
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')
-        assert res.json()['status'] == 'fetching_bank_data'
+        assert res.json()['status'] == 'validating_document'
 
     def test_create_document_type_set_by_service(self, auth_client):
         """El cliente no envía document_type — lo fija el service."""
@@ -192,7 +202,7 @@ class TestCreate:
 
         bootstrap = history.last()
         assert bootstrap.from_status == 'created'
-        assert bootstrap.to_status == 'fetching_bank_data'
+        assert bootstrap.to_status == 'validating_document'
 
     def test_create_mx_country_ref_set(self, auth_client):
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')
@@ -229,8 +239,16 @@ class TestTasks:
             id=res.json()['id']
         )
 
+    def _advance_mx_to_fetching(self, app):
+        """Advance an MX app past validating_document → fetching_bank_data for task tests."""
+        if app.status_code == 'validating_document':
+            from applications.services import CreditApplicationService
+            CreditApplicationService.update_status(str(app.id), 'fetching_bank_data', 'test:setup')
+            app.refresh_from_db()
+
     def test_mx_tasks_transitions_to_approved_on_success(self, auth_client):
         app = self._create_app(auth_client)
+        self._advance_mx_to_fetching(app)
         from applications.tasks import fetching_bank_data_task, validate_country_rules_task
         fetching_bank_data_task(str(app.id))
         validate_country_rules_task(str(app.id))
@@ -245,6 +263,7 @@ class TestTasks:
     def test_mx_task_transitions_to_rejected_when_amount_exceeds_5x_income(self, auth_client):
         """amount > 5x income → task rechaza la solicitud."""
         app = self._create_app(auth_client, payload(amount_requested='100000.00', monthly_income='10000.00'))
+        self._advance_mx_to_fetching(app)
         from applications.tasks import fetching_bank_data_task, validate_country_rules_task
         fetching_bank_data_task(str(app.id))
         validate_country_rules_task(str(app.id))
@@ -274,6 +293,7 @@ class TestTasks:
 
     def test_mx_task_moves_to_technical_error_when_retries_exhausted(self, auth_client):
         app = self._create_app(auth_client)
+        self._advance_mx_to_fetching(app)
 
         from applications.tasks import fetching_bank_data_task
 
@@ -287,6 +307,7 @@ class TestTasks:
     def test_task_noop_if_status_mismatch(self, auth_client):
         """Idempotency guard: task exits when current state does not match."""
         app = self._create_app(auth_client)
+        self._advance_mx_to_fetching(app)
         from applications.services import CreditApplicationService
         CreditApplicationService.update_status(str(app.id), 'validate_country_rules', 'test')
 
@@ -298,6 +319,7 @@ class TestTasks:
 
     def test_notify_final_decision_sends_webhook(self, auth_client, settings):
         app = self._create_app(auth_client)
+        self._advance_mx_to_fetching(app)
         settings.WEBHOOK_URL = 'https://example.com/webhook'
         settings.WEBHOOK_TIMEOUT_SECONDS = 3
 
@@ -357,6 +379,7 @@ class TestTasks:
 
     def test_notify_final_decision_retries_on_webhook_error(self, auth_client, settings):
         app = self._create_app(auth_client)
+        self._advance_mx_to_fetching(app)
         settings.WEBHOOK_URL = 'https://example.com/webhook'
         settings.WEBHOOK_RETRY_COUNTDOWN_SECONDS = 42
 
@@ -377,6 +400,7 @@ class TestTasks:
 
     def test_notify_final_decision_returns_when_retries_exhausted(self, auth_client, settings):
         app = self._create_app(auth_client)
+        self._advance_mx_to_fetching(app)
         settings.WEBHOOK_URL = 'https://example.com/webhook'
 
         from applications.tasks import fetching_bank_data_task, validate_country_rules_task, notify_final_decision_task
@@ -408,6 +432,21 @@ class TestList:
         assert res.status_code == 200
         assert res.json()['count'] == 2
 
+    def test_admin_can_list_all_applications(self, auth_client, other_auth_client, admin_auth_client):
+        auth_client.post(LIST_URL, payload(), content_type='application/json')
+        other_auth_client.post(LIST_URL, co_payload(), content_type='application/json')
+
+        res = admin_auth_client.get(LIST_URL)
+        assert res.status_code == 200
+        assert res.json()['count'] == 2
+
+    def test_admin_can_retrieve_any_application(self, auth_client, admin_auth_client):
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+
+        res = admin_auth_client.get(DETAIL_URL(pk))
+        assert res.status_code == 200
+        assert res.json()['id'] == pk
+
     def test_list_filter_by_country(self, auth_client):
         auth_client.post(LIST_URL, payload(), content_type='application/json')
         auth_client.post(LIST_URL, co_payload(), content_type='application/json')
@@ -425,16 +464,16 @@ class TestList:
         assert len(res.json()['results']) == 1
 
     def test_list_filter_status_multiple(self, auth_client):
-        created_id = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        validating_id = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
         fetching_id = auth_client.post(LIST_URL, payload(document_number='PERJ800101HDFRZN08'), content_type='application/json').json()['id']
 
-        # Transicionar a fetching_bank_data
+        # Transicionar a fetching_bank_data (validating_document → fetching_bank_data)
         auth_client.patch(DETAIL_URL(fetching_id), {'status': 'fetching_bank_data'}, content_type='application/json')
 
-        res = auth_client.get(LIST_URL + '?status=created&status=fetching_bank_data')
+        res = auth_client.get(LIST_URL + '?status=validating_document&status=fetching_bank_data')
         assert res.status_code == 200
         ids = {row['id'] for row in res.json()['results']}
-        assert created_id in ids
+        assert validating_id in ids
         assert fetching_id in ids
 
     def test_list_filter_country_and_status(self, auth_client):
@@ -600,14 +639,15 @@ class TestRetrieve:
 
 @pytest.mark.django_db
 class TestStatusUpdate:
-    def test_update_created_to_fetching_bank_data(self, auth_client):
+    def test_update_validating_document_to_fetching_bank_data(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
-        res = auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         assert res.status_code == 200
-        assert res.json()['status'] == 'validate_country_rules'
+        assert res.json()['status'] == 'fetching_bank_data'
 
     def test_update_validate_country_rules_to_approved(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX: validating_document → fetching_bank_data → validate_country_rules → approved
         auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
@@ -616,6 +656,7 @@ class TestStatusUpdate:
 
     def test_update_validate_country_rules_to_rejected(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX: validating_document → fetching_bank_data → validate_country_rules → rejected
         auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'rejected'}, content_type='application/json')
@@ -628,14 +669,15 @@ class TestStatusUpdate:
         res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
         assert res.status_code == 400
 
-    def test_invalid_transition_created_to_rejected(self, auth_client):
-        """created → rejected directo no está permitido."""
+    def test_invalid_transition_validating_document_to_approved(self, auth_client):
+        """MX: no hay transición directa validating_document → approved."""
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
-        res = auth_client.patch(DETAIL_URL(pk), {'status': 'rejected'}, content_type='application/json')
+        res = auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
         assert res.status_code == 400
 
     def test_invalid_transition_approved_to_created(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX: validating_document → fetching_bank_data → validate_country_rules → approved
         auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
@@ -644,6 +686,7 @@ class TestStatusUpdate:
 
     def test_invalid_transition_rejected_to_approved(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX: validating_document → fetching_bank_data → validate_country_rules → rejected
         auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'rejected'}, content_type='application/json')
@@ -681,6 +724,8 @@ class TestStatusUpdate:
     def test_transition_auto_dispatches_task_via_workflow(self, auth_client, mock_workflow_tasks):
         """Every state transition dispatches side effects from workflow.on_enter."""
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX boots at validating_document; advance to fetching_bank_data first
+        auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         mock_workflow_tasks['validate'].reset_mock()
 
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
@@ -706,15 +751,17 @@ class TestStatusHistory:
 
         bootstrap = history.last()
         assert bootstrap.from_status == 'created'
-        assert bootstrap.to_status == 'fetching_bank_data'
+        assert bootstrap.to_status == 'validating_document'
         assert bootstrap.metadata.get('event') == 'pipeline_started'
 
     def test_status_update_creates_history_entry(self, auth_client, user):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX: validating_document → fetching_bank_data → validate_country_rules
+        auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
 
         history = ApplicationStatusHistory.objects.filter(application_id=pk).order_by('changed_at')
-        assert history.count() == 3
+        assert history.count() == 4
         transition = history.last()
         assert transition.from_status == 'fetching_bank_data'
         assert transition.to_status == 'validate_country_rules'
@@ -722,9 +769,10 @@ class TestStatusHistory:
 
     def test_multiple_transitions_create_multiple_entries(self, auth_client):
         pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        # MX: validating_document → fetching_bank_data → validate_country_rules → approved
         auth_client.patch(DETAIL_URL(pk), {'status': 'fetching_bank_data'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
         auth_client.patch(DETAIL_URL(pk), {'status': 'approved'}, content_type='application/json')
 
-        # initial + 3 transiciones = 4
-        assert ApplicationStatusHistory.objects.filter(application_id=pk).count() == 4
+        # '' → created, created → validating_document, + 3 PATCHes = 5
+        assert ApplicationStatusHistory.objects.filter(application_id=pk).count() == 5

@@ -1,0 +1,34 @@
+[
+  {
+    "numeroDocumento": null,
+    "estadoCuenta": "activo",
+    "totalObligaciones": 2000.0,
+    "puntajeRiesgo": null,
+    "entidad": "DataCrédito",
+    "fechaConsulta": "2025-01-15"
+  },
+  {
+    "numeroDocumento": null,
+    "estadoCuenta": "activo",
+    "totalObligaciones": 18500.0,
+    "puntajeRiesgo": null,
+    "entidad": "DataCrédito",
+    "fechaConsulta": "2025-01-15"
+  },
+  {
+    "numeroDocumento": null,
+    "estadoCuenta": "mora",
+    "totalObligaciones": 55000.0,
+    "puntajeRiesgo": null,
+    "entidad": "DataCrédito",
+    "fechaConsulta": "2025-01-15"
+  },
+  {
+    "numeroDocumento": null,
+    "estadoCuenta": "activo",
+    "totalObligaciones": 500.0,
+    "puntajeRiesgo": null,
+    "entidad": "DataCrédito",
+    "fechaConsulta": "2025-01-15"
+  }
+]

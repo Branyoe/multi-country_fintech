@@ -27,7 +27,11 @@ class CreditApplicationViewSet(
     ordering = ['-requested_at']
 
     def get_queryset(self):
-        queryset = CreditApplication.objects.filter(user=self.request.user)
+        user = self.request.user
+        if user.role == 'admin':
+            queryset = CreditApplication.objects.all()
+        else:
+            queryset = CreditApplication.objects.filter(user=user)
         if self.action == 'retrieve':
             return queryset.prefetch_related('status_history')
         return queryset

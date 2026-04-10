@@ -50,22 +50,26 @@ def setup_statuses(db, setup_countries):
     co = Country.objects.get(code='CO')
 
     # MX statuses
-    mx_created = CountryStatus.objects.create(country=mx, code='created', label='Creada', is_initial=True, is_terminal=False, order=1)
-    mx_fetching = CountryStatus.objects.create(country=mx, code='fetching_bank_data', label='Consultando banco', is_initial=False, is_terminal=False, order=2)
-    mx_validate = CountryStatus.objects.create(country=mx, code='validate_country_rules', label='Validando reglas', is_initial=False, is_terminal=False, order=3)
-    mx_approved = CountryStatus.objects.create(country=mx, code='approved', label='Aprobada', is_initial=False, is_terminal=True, order=4)
-    mx_rejected = CountryStatus.objects.create(country=mx, code='rejected', label='Rechazada', is_initial=False, is_terminal=True, order=5)
-    mx_tech_error = CountryStatus.objects.create(country=mx, code='technical_error', label='Error técnico', is_initial=False, is_terminal=False, order=6)
+    mx_created      = CountryStatus.objects.create(country=mx, code='created',                label='Creada',               is_initial=True,  is_terminal=False, order=1)
+    mx_validating   = CountryStatus.objects.create(country=mx, code='validating_document',    label='Validando documento',  is_initial=False, is_terminal=False, order=2)
+    mx_fetching     = CountryStatus.objects.create(country=mx, code='fetching_bank_data',     label='Consultando banco',    is_initial=False, is_terminal=False, order=3)
+    mx_validate     = CountryStatus.objects.create(country=mx, code='validate_country_rules', label='Validando reglas',     is_initial=False, is_terminal=False, order=4)
+    mx_approved     = CountryStatus.objects.create(country=mx, code='approved',               label='Aprobada',             is_initial=False, is_terminal=True,  order=5)
+    mx_rejected     = CountryStatus.objects.create(country=mx, code='rejected',               label='Rechazada',            is_initial=False, is_terminal=True,  order=6)
+    mx_tech_error   = CountryStatus.objects.create(country=mx, code='technical_error',        label='Error técnico',        is_initial=False, is_terminal=False, order=7)
 
     # MX transitions
     StatusTransition.objects.bulk_create([
-        StatusTransition(from_status=mx_created, to_status=mx_fetching),
-        StatusTransition(from_status=mx_created, to_status=mx_tech_error),
-        StatusTransition(from_status=mx_fetching, to_status=mx_validate),
-        StatusTransition(from_status=mx_fetching, to_status=mx_tech_error),
-        StatusTransition(from_status=mx_validate, to_status=mx_approved),
-        StatusTransition(from_status=mx_validate, to_status=mx_rejected),
-        StatusTransition(from_status=mx_validate, to_status=mx_tech_error),
+        StatusTransition(from_status=mx_created,    to_status=mx_validating),
+        StatusTransition(from_status=mx_created,    to_status=mx_tech_error),
+        StatusTransition(from_status=mx_validating, to_status=mx_fetching),
+        StatusTransition(from_status=mx_validating, to_status=mx_rejected),
+        StatusTransition(from_status=mx_validating, to_status=mx_tech_error),
+        StatusTransition(from_status=mx_fetching,   to_status=mx_validate),
+        StatusTransition(from_status=mx_fetching,   to_status=mx_tech_error),
+        StatusTransition(from_status=mx_validate,   to_status=mx_approved),
+        StatusTransition(from_status=mx_validate,   to_status=mx_rejected),
+        StatusTransition(from_status=mx_validate,   to_status=mx_tech_error),
     ])
 
     # CO statuses

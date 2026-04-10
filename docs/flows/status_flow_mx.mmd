@@ -2,32 +2,35 @@
 title: Flujo de Estados MX (Solicitud de Credito)
 ---
 stateDiagram-v2
-    [*] --> created: create() / status inicial
+    [*] --> created: create() / estado inicial
 
-    created --> fetching_bank_data: update_status()\nworkflow.on_enter -> fetching_bank_data_task
-    fetching_bank_data --> validate_country_rules: fetching_bank_data_task\nupdate_status() success
-    validate_country_rules --> approved: validate_country_rules_task\nupdate_status() valid=true
-    validate_country_rules --> rejected: validate_country_rules_task\nupdate_status() valid=false
+    created --> validating_document: update_status() -- MX bootstrap → validating_document_task
+    validating_document --> fetching_bank_data: CURP válida -- fetching_bank_data_task
+    validating_document --> rejected: CURP inválida
+    validating_document --> technical_error: retries agotados
 
-    created --> technical_error: bootstrap error
+    fetching_bank_data --> validate_country_rules: BankProviderData persistida -- validate_country_rules_task
     fetching_bank_data --> technical_error: retries agotados / fallo proveedor
+
+    validate_country_rules --> approved: valid=true -- CountryValidation persistida
+    validate_country_rules --> rejected: valid=false
     validate_country_rules --> technical_error: retries agotados / datos faltantes
 
     approved --> [*]
     rejected --> [*]
     technical_error --> [*]
 
-    note right of created
-        Orquestacion state-driven.
-        El bootstrap ocurre via update_status().
+    note right of validating_document
+        MX único: valida CURP contra registro.
+        Puede rechazar antes de consultar banco.
     end note
 
     note right of fetching_bank_data
-        Guarda BankProviderData antes de transicionar.
-        Maneja retry con Celery hasta technical_error.
+        Persiste BankProviderData antes de transicionar.
+        Retry con Celery hasta technical_error.
     end note
 
     note right of approved
-        Estado terminal de negocio.
-        workflow.on_enter dispara notify_final_decision_task.
+        Estado terminal. on_enter dispara notify_final_decision_task.
+        Webhook saliente si WEBHOOK_URL está configurada.
     end note

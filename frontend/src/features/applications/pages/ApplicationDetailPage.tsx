@@ -35,6 +35,52 @@ function formatCurrency(value: string) {
   }).format(Number(value))
 }
 
+type MessageTone = 'neutral' | 'success' | 'warning' | 'error'
+
+interface TransitionMessage {
+  text: string
+  tone: MessageTone
+}
+
+function getTransitionMessage(entry: ApplicationStatusTransition): TransitionMessage | null {
+  const m = entry.metadata
+  if (!m || typeof m !== 'object') return null
+
+  const event = m.event as string | undefined
+  const task = m.task as string | undefined
+  const valid = m.valid as boolean | undefined
+  const reason = m.reason as string | undefined
+
+  if (event === 'created') return { text: 'Solicitud recibida', tone: 'neutral' }
+  if (event === 'pipeline_started') return { text: 'Procesamiento iniciado', tone: 'neutral' }
+
+  if (task === 'validating_document_task') {
+    if (event === 'success') return { text: 'Documento verificado correctamente', tone: 'success' }
+    if (event === 'rejected') return { text: reason ?? 'Documento no válido', tone: 'warning' }
+    if (event === 'failed') return { text: 'Error técnico durante la validación del documento', tone: 'error' }
+  }
+
+  if (task === 'fetching_bank_data_task') {
+    if (event === 'success') return { text: 'Datos del buró de crédito obtenidos', tone: 'success' }
+    if (event === 'failed') return { text: reason ?? 'Error al consultar el buró de crédito', tone: 'error' }
+  }
+
+  if (task === 'validate_country_rules_task') {
+    if (event === 'success' && valid === true) return { text: 'Reglas financieras superadas', tone: 'success' }
+    if (event === 'success' && valid === false) return { text: reason ?? 'Reglas financieras no superadas', tone: 'warning' }
+    if (event === 'failed') return { text: 'Error técnico en la validación financiera', tone: 'error' }
+  }
+
+  return null
+}
+
+const messageToneClass: Record<MessageTone, string> = {
+  neutral: 'text-muted-foreground',
+  success: 'text-muted-foreground',
+  warning: 'text-amber-600 dark:text-amber-400',
+  error: 'text-destructive',
+}
+
 function statusVariant(code: string): 'secondary' | 'outline' | 'default' | 'destructive' {
   if (code === 'approved') return 'default'
   if (code === 'rejected') return 'destructive'
@@ -201,24 +247,30 @@ export default function ApplicationDetailPage() {
               <p className="text-sm text-muted-foreground">Aún no hay cambios de estado registrados.</p>
             ) : (
               <ol className="space-y-4">
-                {timeline.map((entry: ApplicationStatusTransition, index) => (
-                  <li key={`${entry.changed_at}-${index}`} className="relative pl-6">
-                    <span className="absolute left-0 top-1.5">
-                      <CircleDot className="size-4 text-primary" />
-                    </span>
-                    {index < timeline.length - 1 && (
-                      <span className="absolute left-1.75 top-5 h-[calc(100%+8px)] w-px bg-border" />
-                    )}
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        {statusMap[entry.from_status] ?? entry.from_status ?? 'Inicial'}
-                        {' -> '}
-                        {statusMap[entry.to_status] ?? entry.to_status}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatDate(entry.changed_at)}</p>
-                    </div>
-                  </li>
-                ))}
+                {timeline.map((entry: ApplicationStatusTransition, index) => {
+                  const msg = getTransitionMessage(entry)
+                  return (
+                    <li key={`${entry.changed_at}-${index}`} className="relative pl-6">
+                      <span className="absolute left-0 top-1.5">
+                        <CircleDot className="size-4 text-primary" />
+                      </span>
+                      {index < timeline.length - 1 && (
+                        <span className="absolute left-1.75 top-5 h-[calc(100%+8px)] w-px bg-border" />
+                      )}
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">
+                          {statusMap[entry.from_status] ?? entry.from_status ?? 'Inicial'}
+                          {' → '}
+                          {statusMap[entry.to_status] ?? entry.to_status}
+                        </p>
+                        {msg && (
+                          <p className={`text-xs ${messageToneClass[msg.tone]}`}>{msg.text}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">{formatDate(entry.changed_at)}</p>
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             )}
           </CardContent>

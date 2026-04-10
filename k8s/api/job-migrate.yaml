@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: bravo
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Block until Postgres is ready before running migrations
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U bravo; do
+                echo "Waiting for postgres..."; sleep 2
+              done
+      containers:
+        - name: migrate
+          image: REPLACE_WITH_YOUR_REGISTRY/bravo-api:TAG
+          imagePullPolicy: IfNotPresent  # minikube: usa imagen local si ya existe
+          command:
+            - sh
+            - -c
+            - |
+              python manage.py migrate --noinput &&
+              python manage.py loaddata fixtures/users.json    || echo "users already loaded" &&
+              python manage.py loaddata fixtures/countries.json || echo "countries already loaded" &&
+              python manage.py loaddata fixtures/statuses.json  || echo "statuses already loaded"
+          envFrom:
+            - configMapRef:
+                name: api-config
+            - secretRef:
+                name: api-secret

@@ -1,4 +1,11 @@
+import hashlib
+import json
+from pathlib import Path
+
+from .adapters.datacredito_co import DataCreditoCOAdapter
 from .base import BaseCountryValidator, BankData
+
+_PROFILES_PATH = Path(__file__).parent / 'providers' / 'datacredito_co.json'
 
 
 class COCountryValidator(BaseCountryValidator):
@@ -10,17 +17,11 @@ class COCountryValidator(BaseCountryValidator):
         return 'CC'
 
     def fetch_bank_data(self, document: str) -> BankData:
-        return BankData(
-            provider_name='DATACREDITO_CO',
-            account_status='active',
-            total_debt=2000.0,
-            credit_score=None,
-            raw_response={
-                'cc':          document.strip(),
-                'deuda_total': 2000.0,
-                'estado':      'activo',
-            },
-        )
+        profiles = json.loads(_PROFILES_PATH.read_text(encoding='utf-8'))
+        idx = int(hashlib.md5(document.encode()).hexdigest(), 16) % len(profiles)
+        raw = profiles[idx].copy()
+        raw['numeroDocumento'] = document.strip()
+        return DataCreditoCOAdapter().parse(raw)
 
     def validate_financial_rules(
         self, amount: float, income: float, bank_data: BankData

@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog'
 import { LogOut, User } from 'lucide-react'
+import { Badge } from '~/components/ui/badge'
 import { ApplicationsTable } from '~/features/applications/components/ApplicationsTable'
 import { CreateApplicationForm } from '~/features/applications/components/CreateApplicationForm'
 
@@ -38,9 +39,17 @@ export default function HomePage() {
                 <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground shrink-0">
                   <User className="size-3.5" />
                 </div>
-                <span className="text-sm text-foreground hidden sm:block max-w-[180px] truncate">
-                  {user.email}
-                </span>
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <span className="text-sm text-foreground max-w-[150px] truncate">
+                    {user.email}
+                  </span>
+                  <Badge
+                    variant={user.role === 'admin' ? 'default' : 'secondary'}
+                    className="text-[10px] h-4 px-1.5 shrink-0"
+                  >
+                    {user.role === 'admin' ? 'Admin' : 'Usuario'}
+                  </Badge>
+                </div>
               </div>
             )}
             <Button

@@ -265,3 +265,79 @@ Cobertura actual:
 http://localhost:8000/admin
 admin@dev.local / admin123
 ```
+
+---
+
+## Agregar un nuevo estado a un país
+
+1. **Persistir los datos del nuevo estado**
+
+   **Opción A — fixtures** _(dev / entornos con `loaddata`)_
+   - Agregar el `CountryStatus` con un PK nuevo, `country` = PK del país, `code`, `label`, `order` correcto (ajustar el `order` de los estados siguientes si es necesario).
+   - Agregar las `StatusTransition` que conectan el nuevo estado (from/to) con los estados adyacentes. Eliminar o redirigir las transiciones antiguas que el nuevo estado reemplaza.
+
+   **Opción B — Django Admin** _(producción)_
+   - Desplegar primero el código de los pasos 3 y 4 (workflow + task), de modo que el nuevo `code` ya esté manejado antes de que el estado exista en la base de datos.
+   - En `/admin/countries/countrystatus/` crear el `CountryStatus` con el `code`, `label` y `order` deseados.
+   - En `/admin/countries/statustransition/` crear las `StatusTransition` necesarias (from/to).
+   - Actualizar el fixture `statuses.json` para mantenerlo en sync con la DB de producción.
+
+2. **`backend/conftest.py`** — espejo de los fixtures para tests
+   - Agregar `CountryStatus.objects.create(...)` con los mismos valores.
+   - Actualizar el `bulk_create` de `StatusTransition` para que el flujo coincida con el de producción.
+
+3. **`applications/workflows/<país>.py`**
+   - Si el nuevo estado dispara un Celery task, importarlo en `on_enter()` y agregar el caso `elif state_code == '<code>': <task>.delay(...)`.
+   - Si el nuevo estado es el primer estado de procesamiento (bootstrap), sobrescribir `get_bootstrap_state()` para devolver su `code`.
+
+4. **`applications/tasks.py`** _(solo si el estado dispara un task nuevo)_
+   - Agregar `@shared_task(bind=True, max_retries=3, name='<nombre>')`.
+   - Incluir el guard de idempotencia: `if app.status_code != '<code>': return`.
+   - Transicionar al estado siguiente vía `CreditApplicationService.update_status(...)`.
+
+5. **Tests** — actualizar `applications/tests/test_applications.py`
+   - Corregir aserciones de status en `TestCreate` si cambia el estado de bootstrap.
+   - Agregar o ajustar helpers de avance de estado en `TestTasks._advance_*` si los task tests necesitan pasar por el nuevo estado antes de ejecutar una tarea.
+   - Ajustar `TestStatusHistory` si cambia el conteo de entradas o los valores `from_status`/`to_status`.
+
+---
+
+## Agregar una regla financiera a un país
+
+Las reglas financieras se evalúan en `validate_country_rules_task` usando `validator.validate_financial_rules()` y los resultados se persisten en `CountryValidation`.
+
+> **Limitación actual:** `validate_financial_rules()` devuelve un único resultado `(bool, message, field)` para todas las reglas combinadas. Todos los nombres en `get_validation_rules()` comparten ese mismo resultado en `CountryValidation` — si falla una regla, todas quedan como `passed=False`. El primer `return False` dentro del método cortocircuita las reglas siguientes.
+
+### Pasos
+
+1. **`countries/validators/<país>.py`** — añadir la condición en `validate_financial_rules()`
+
+   ```python
+   def validate_financial_rules(self, amount, income, bank_data):
+       if bank_data.credit_score is not None and bank_data.credit_score < 600:
+           return False, 'Score crediticio insuficiente (mínimo 600)', 'non_field_errors'
+       # reglas existentes …
+       return True, '', ''
+   ```
+
+   `error_field` puede ser un nombre de campo del serializer (`amount_requested`, `monthly_income`) o `non_field_errors` para errores de datos externos.
+
+2. **Mismo archivo** — registrar el nombre en `get_validation_rules()`
+
+   ```python
+   def get_validation_rules(self) -> list[str]:
+       return ['regla_existente', 'score_minimo_600']
+   ```
+
+3. **Tests** — clase `TestTasks` en `applications/tests/test_applications.py`
+   - Añadir un test con valores que disparen la nueva regla:
+     ```python
+     app = self._create_app(auth_client, payload(monthly_income='...'))
+     self._advance_mx_to_fetching(app)  # solo MX
+     fetching_bank_data_task(str(app.id))
+     validate_country_rules_task(str(app.id))
+     app.refresh_from_db()
+     assert app.status_code == 'rejected'
+     rules = list(CountryValidation.objects.filter(application=app).values_list('rule_name', flat=True))
+     assert 'score_minimo_600' in rules
+     ```

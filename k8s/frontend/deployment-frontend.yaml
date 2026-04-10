@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: bravo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: REPLACE_WITH_YOUR_REGISTRY/bravo-frontend:TAG
+          imagePullPolicy: IfNotPresent  # minikube: usa imagen local si ya existe
+          ports:
+            - containerPort: 80
+          # No env vars: VITE_API_BASE_URL=/api is baked into the image at build time.
+          # The nginx.prod.conf upstream http://api:8000 resolves via the api ClusterIP Service.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            failureThreshold: 5
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 5
+            failureThreshold: 2

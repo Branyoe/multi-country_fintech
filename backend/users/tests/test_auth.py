@@ -11,8 +11,8 @@ REFRESH_URL = reverse('auth-token-refresh')
 # Helpers
 # ---------------------------------------------------------------------------
 
-def signup(client, email='user@test.com', password='strongpass123', role='user'):
-    return client.post(SIGNUP_URL, {'email': email, 'password': password, 'role': role}, content_type='application/json')
+def signup(client, email='user@test.com', password='strongpass123'):
+    return client.post(SIGNUP_URL, {'email': email, 'password': password}, content_type='application/json')
 
 
 def login(client, email='user@test.com', password='strongpass123'):
@@ -29,8 +29,8 @@ class TestSignup:
         res = signup(client)
         assert res.status_code == 201
         assert res.json()['email'] == 'user@test.com'
-        assert res.json()['role'] == 'user'
         assert 'password' not in res.json()
+        assert 'role' not in res.json()
 
     def test_signup_duplicate_email(self, client):
         signup(client)

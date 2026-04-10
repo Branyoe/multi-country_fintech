@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bravo-ingress
+  namespace: bravo
+  annotations:
+    # Long timeouts keep WebSocket connections alive through the Ingress layer.
+    # Without these, the default 60s timeout kills idle WS connections.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Uncomment to issue TLS certificates automatically via cert-manager:
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  # All traffic routes to the frontend Service. The Nginx container inside
+  # frontend handles internal proxying to api:8000 for /api/, /admin/,
+  # /static/, and /ws/ — exactly as in docker-compose.prod.yml. This avoids
+  # duplicating proxy logic in the Ingress and preserves WebSocket upgrade
+  # headers that nginx.prod.conf already sets correctly.
+  #
+  # tls:                          # Uncomment for HTTPS
+  #   - hosts:
+  #       - REPLACE_WITH_YOUR_DOMAIN
+  #     secretName: bravo-tls
+  rules:
+    - host: REPLACE_WITH_YOUR_DOMAIN
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

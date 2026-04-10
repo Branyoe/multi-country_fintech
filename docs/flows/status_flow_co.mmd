@@ -2,12 +2,12 @@
 title: Flujo de Estados CO (Solicitud de Credito)
 ---
 stateDiagram-v2
-    [*] --> pending: create() / status inicial
+    [*] --> pending: create() / estado inicial
 
-    pending --> fetching_bank_data: update_status()\nworkflow.on_enter -> fetching_bank_data_task
-    fetching_bank_data --> validate_country_rules: fetching_bank_data_task\nupdate_status() success
-    validate_country_rules --> approved: validate_country_rules_task\nupdate_status() valid=true
-    validate_country_rules --> rejected: validate_country_rules_task\nupdate_status() valid=false
+    pending --> fetching_bank_data: update_status() -- CO bootstrap → fetching_bank_data_task
+    fetching_bank_data --> validate_country_rules: BankProviderData persistida -- validate_country_rules_task
+    validate_country_rules --> approved: valid=true -- CountryValidation persistida
+    validate_country_rules --> rejected: valid=false
 
     pending --> technical_error: bootstrap error
     fetching_bank_data --> technical_error: retries agotados / fallo proveedor
@@ -18,11 +18,11 @@ stateDiagram-v2
     technical_error --> [*]
 
     note right of pending
-        CO conserva estado inicial pending.
-        Despues usa pipeline simetrico con MX.
+        CO salta validación async de documento.
+        Bootstrap inicia directamente en fetching_bank_data.
     end note
 
-    note right of validate_country_rules
-        Persiste CountryValidation antes
-        de transicionar a estado terminal.
+    note right of approved
+        Estado terminal. on_enter dispara notify_final_decision_task.
+        Webhook saliente si WEBHOOK_URL está configurada.
     end note

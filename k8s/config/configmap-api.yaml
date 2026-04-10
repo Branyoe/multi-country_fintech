@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: bravo
+data:
+  # Django core
+  DEBUG: "False"
+  # localhost required for exec probes; api for intra-cluster; add your domain
+  ALLOWED_HOSTS: "localhost,api,REPLACE_WITH_YOUR_DOMAIN"
+  CORS_ALLOWED_ORIGINS: "https://REPLACE_WITH_YOUR_DOMAIN"
+  CSRF_TRUSTED_ORIGINS: "https://REPLACE_WITH_YOUR_DOMAIN"
+
+  # Database (credentials in secret-api.yaml)
+  DB_ENGINE: "django.db.backends.postgresql"
+  DB_NAME: "bravo"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+
+  # Redis (DB0=broker, DB1=cache, DB2=channel layer)
+  CELERY_BROKER_URL: "redis://redis:6379/0"
+  CACHE_URL: "redis://redis:6379/1"
+  CHANNEL_LAYER_URL: "redis://redis:6379/2"
+
+  # Webhooks
+  WEBHOOK_TIMEOUT_SECONDS: "5"
+  WEBHOOK_RETRY_COUNTDOWN_SECONDS: "30"

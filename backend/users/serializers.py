@@ -9,11 +9,11 @@ class SignupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'email', 'password', 'role', 'created_at')
+        fields = ('id', 'email', 'password', 'created_at')
         read_only_fields = ('id', 'created_at')
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        return User.objects.create_user(**validated_data, role='user')
 
 
 class UserSerializer(serializers.ModelSerializer):

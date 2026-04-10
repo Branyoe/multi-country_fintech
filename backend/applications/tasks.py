@@ -45,6 +45,54 @@ def _send_webhook(url: str, payload: dict, timeout_seconds: int) -> int:
         return int(response.getcode() or 200)
 
 
+@shared_task(bind=True, max_retries=3, name='validating_document_task')
+def validating_document_task(self, application_id: str) -> None:
+    """Async document validation step (MX only): verify CURP against registry simulation."""
+    from .models import CreditApplication
+    from countries.validators.registry import get_validator
+    from .services import CreditApplicationService
+
+    try:
+        app = CreditApplication.objects.select_related('country_ref', 'status').get(id=application_id)
+    except CreditApplication.DoesNotExist:
+        return
+
+    if app.status_code != 'validating_document':
+        return
+
+    delay(random.randint(1, 3))
+
+    try:
+        validator = get_validator(app.country_ref.code)
+        valid, error_msg = validator.validate_document(app.document_number)
+    except Exception as exc:
+        if self.request.retries >= self.max_retries:
+            CreditApplicationService.update_status(
+                application_id=str(app.id),
+                new_status_code='technical_error',
+                changed_by='system:validating_document_task',
+                metadata={'task': 'validating_document_task', 'event': 'failed', 'reason': str(exc)},
+            )
+            return
+        raise self.retry(exc=exc, countdown=60)
+
+    if not valid:
+        CreditApplicationService.update_status(
+            application_id=str(app.id),
+            new_status_code='rejected',
+            changed_by='system:validating_document_task',
+            metadata={'task': 'validating_document_task', 'event': 'rejected', 'reason': error_msg},
+        )
+        return
+
+    CreditApplicationService.update_status(
+        application_id=str(app.id),
+        new_status_code='fetching_bank_data',
+        changed_by='system:validating_document_task:success',
+        metadata={'task': 'validating_document_task', 'event': 'success'},
+    )
+
+
 @shared_task(bind=True, max_retries=3, name='fetching_bank_data_task')
 def fetching_bank_data_task(self, application_id: str) -> None:
     """Fetch and persist bank data for any country in fetching_bank_data state."""
@@ -139,8 +187,7 @@ def validate_country_rules_task(self, application_id: str) -> None:
     try:
         workflow = get_workflow(app.country)
         validator = get_validator(app.country_ref.code)
-        valid = workflow.validate(app, app.bank_data)
-        error_msg = '' if valid else 'financial_rules_failed'
+        valid, rejection_reason = workflow.validate(app, app.bank_data)
 
         for rule in validator.get_validation_rules():
             CountryValidation.objects.update_or_create(
@@ -148,19 +195,23 @@ def validate_country_rules_task(self, application_id: str) -> None:
                 rule_name=rule,
                 defaults={
                     'passed': valid,
-                    'detail': error_msg if not valid else '',
+                    'detail': rejection_reason if not valid else '',
                 },
             )
+
+        transition_metadata: dict = {
+            'task': 'validate_country_rules_task',
+            'event': 'success',
+            'valid': valid,
+        }
+        if not valid and rejection_reason:
+            transition_metadata['reason'] = rejection_reason
 
         CreditApplicationService.update_status(
             application_id=str(app.id),
             new_status_code='approved' if valid else 'rejected',
             changed_by='system:validate_country_rules_task:success',
-            metadata={
-                'task': 'validate_country_rules_task',
-                'event': 'success',
-                'valid': valid,
-            },
+            metadata=transition_metadata,
         )
     except Exception as exc:
         if self.request.retries >= self.max_retries:

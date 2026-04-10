@@ -199,11 +199,64 @@ class BaseCountryValidator(ABC):
     def validate_document(self, doc) -> tuple[bool, str]       # sync, regex del DB
     def fetch_bank_data(self, doc) -> BankData                  # async (en task), llamada al buró
     def validate_financial_rules(self, amount, income, bank_data) -> tuple[bool, str, str]
-    def get_initial_task(self) -> str                            # nombre del Celery task
-    def get_validation_rules(self) -> list[str]                 # reglas a registrar en CountryValidation
+    def get_validation_rules(self) -> list[str]                 # etiquetas registradas en CountryValidation
 ```
 - `BankData` es un `@dataclass` con campos `provider_name`, `account_status`, `total_debt`, `credit_score`, `raw_response`
 - Para añadir un país: crear `XYCountryValidator`, registrar en `registry.py`, añadir estados/transiciones en fixtures
+
+#### Limitación actual: evaluación agregada de reglas financieras
+`validate_financial_rules()` devuelve **un único** `(bool, message, error_field)` para todas las reglas combinadas. `validate_country_rules_task` aplica ese mismo resultado a **todos** los nombres de `get_validation_rules()` al persistir en `CountryValidation`. Consecuencia: si tienes tres reglas y falla solo una, las tres quedan como `passed=False`. Los nombres en `get_validation_rules()` son etiquetas descriptivas, no evaluaciones independientes.
+
+Para agregar una regla nueva dentro de la arquitectura actual ver la sección "Cómo agregar una regla financiera".
+
+### Cómo agregar un nuevo estado a un país
+
+1. **`backend/fixtures/statuses.json`**
+   - Agregar el `CountryStatus` con un PK nuevo, `country` = PK del país, `code`, `label`, `order` correcto (ajustar el `order` de los estados siguientes si es necesario).
+   - Agregar las `StatusTransition` que conectan el nuevo estado (from/to) con los estados adyacentes. Eliminar o redirigir las transiciones antiguas que el nuevo estado reemplaza.
+
+2. **`backend/conftest.py`** — espejo de los fixtures para tests
+   - Agregar `CountryStatus.objects.create(...)` con los mismos valores.
+   - Actualizar el `bulk_create` de `StatusTransition` para que el flujo en tests coincida con el de producción.
+
+3. **`applications/workflows/<país>.py`**
+   - Si el nuevo estado dispara un Celery task, importarlo en `on_enter()` y agregar el caso `elif state_code == '<code>': <task>.delay(...)`.
+   - Si el nuevo estado es el primer estado de procesamiento (bootstrap), sobrescribir `get_bootstrap_state()` para devolver su `code`.
+
+4. **`applications/tasks.py`** (solo si el estado dispara un task nuevo)
+   - Agregar `@shared_task(bind=True, max_retries=3, name='<nombre>')`.
+   - Incluir el guard de idempotencia: `if app.status_code != '<code>': return`.
+   - Transicionar al estado siguiente vía `CreditApplicationService.update_status(...)`.
+
+5. **Tests** — actualizar `applications/tests/test_applications.py`
+   - Corregir aserciones de status en `TestCreate` si cambia el estado de bootstrap.
+   - Agregar o ajustar helpers de avance de estado en `TestTasks._advance_*` si los tasks tests necesitan llegar al nuevo estado antes de ejecutar una tarea.
+   - Ajustar `TestStatusHistory` si cambia el conteo de entradas o los valores de `from_status`/`to_status`.
+
+### Cómo agregar una regla financiera a un país
+
+> **Restricción de arquitectura:** todas las reglas de un país comparten el mismo resultado en `CountryValidation` (ver limitación descrita arriba). Las reglas nuevas deben poder evaluarse con los mismos parámetros que ya recibe `validate_financial_rules` (`amount`, `income`, `bank_data`).
+
+1. **`countries/validators/<país>.py`** — añadir la lógica en `validate_financial_rules()`
+   ```python
+   def validate_financial_rules(self, amount, income, bank_data):
+       if <condición_nueva>:
+           return False, '<mensaje>', '<campo_o_non_field_errors>'
+       # reglas existentes …
+       return True, '', ''
+   ```
+   El primer `return False` que se alcance cortocircuita el resto.
+
+2. **Mismo archivo** — registrar el nombre en `get_validation_rules()`
+   ```python
+   def get_validation_rules(self) -> list[str]:
+       return ['regla_existente', 'nombre_nueva_regla']
+   ```
+   El nombre es una cadena libre; se almacena en `CountryValidation.rule_name`.
+
+3. **Tests** — clase `TestTasks` en `applications/tests/test_applications.py`
+   - Test que verifique rechazo: `_create_app` con valores que disparen la regla → `_advance_mx_to_fetching` si es MX → `fetching_bank_data_task` → `validate_country_rules_task` → `assert app.status_code == 'rejected'`.
+   - Verificar que el nombre queda registrado: `rules = list(CountryValidation.objects.filter(application=app).values_list('rule_name', flat=True)); assert 'nombre_nueva_regla' in rules`.
 
 ### Cache de países
 - `countries/cache.py::get_countries_cached()` → `{code: Country}` desde Redis, con `prefetch_related('statuses')`
