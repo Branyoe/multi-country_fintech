@@ -1,4 +1,4 @@
-.PHONY: dev dev-build dev-down dev-clean dev-full-restart prod prod-build prod-down prod-clean logs-dev logs-prod
+.PHONY: dev dev-build dev-down dev-clean dev-full-restart prod prod-build prod-down prod-clean prod-full-restart logs-dev logs-prod
 
 # ── Dev (hot-reload) ───────────────────────────────────────────────────────────
 dev-build:
@@ -27,6 +27,8 @@ prod-down:
 
 prod-clean:
 	docker compose -f docker-compose.prod.yml down -v
+
+prod-full-restart: prod-clean prod-build prod
 
 # ── Utilidades ─────────────────────────────────────────────────────────────────
 logs-dev:
