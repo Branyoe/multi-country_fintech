@@ -1,0 +1,42 @@
+flowchart TD
+
+    %% ── Request al endpoint ─────────────────────────────────────
+    REQ(["GET /api/countries/ -- AllowAny"])
+
+    CALL["get_countries_cached()"]
+    HIT{"cache.get('country_meta') -- ¿hit?"}
+
+    RETURN_CACHE(["Response 200 -- desde Redis"])
+
+    REDIS_UP{"¿Redis disponible?"}
+    WARN["_warn_cache_unavailable_once() -- log warning una sola vez"]
+
+    DB["Country.objects.filter(is_active=True) -- prefetch_related('statuses')"]
+    SET["cache.set('country_meta', data, timeout=None) -- sin expiración"]
+    RETURN_DB(["Response 200 -- desde PostgreSQL"])
+
+    REQ --> CALL --> HIT
+    HIT -- "Sí" --> RETURN_CACHE
+    HIT -- "No" --> REDIS_UP
+    REDIS_UP -- "No" --> WARN --> DB
+    REDIS_UP -- "Sí" --> DB
+    DB --> SET --> RETURN_DB
+
+    %% ── Invalidación por signals ────────────────────────────────
+    ADMIN["Admin / fixture / código -- guarda o borra un Country"]
+    SIGNAL["post_save / post_delete -- conectados en CountriesConfig.ready()"]
+    INVALIDATE["cache.delete('country_meta')"]
+    NEXT(["Próximo request -- repoblará desde DB"])
+
+    ADMIN --> SIGNAL --> INVALIDATE --> NEXT
+
+    style REQ fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
+    style RETURN_CACHE fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style RETURN_DB fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style NEXT fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style WARN fill:#FAC775,stroke:#854F0B,color:#412402
+    style CALL fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style INVALIDATE fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style DB fill:#B5D4F4,stroke:#185FA5,color:#042C53
+    style SET fill:#B5D4F4,stroke:#185FA5,color:#042C53
+    style SIGNAL fill:#F5C4B3,stroke:#993C1D,color:#4A1B0C
