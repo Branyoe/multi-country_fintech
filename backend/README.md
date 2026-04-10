@@ -265,3 +265,37 @@ Cobertura actual:
 http://localhost:8000/admin
 admin@dev.local / admin123
 ```
+
+---
+
+## Agregar un nuevo estado a un país
+
+1. **Persistir los datos del nuevo estado**
+
+   **Opción A — fixtures** _(dev / entornos con `loaddata`)_
+   - Agregar el `CountryStatus` con un PK nuevo, `country` = PK del país, `code`, `label`, `order` correcto (ajustar el `order` de los estados siguientes si es necesario).
+   - Agregar las `StatusTransition` que conectan el nuevo estado (from/to) con los estados adyacentes. Eliminar o redirigir las transiciones antiguas que el nuevo estado reemplaza.
+
+   **Opción B — Django Admin** _(producción)_
+   - Desplegar primero el código de los pasos 3 y 4 (workflow + task), de modo que el nuevo `code` ya esté manejado antes de que el estado exista en la base de datos.
+   - En `/admin/countries/countrystatus/` crear el `CountryStatus` con el `code`, `label` y `order` deseados.
+   - En `/admin/countries/statustransition/` crear las `StatusTransition` necesarias (from/to).
+   - Actualizar el fixture `statuses.json` para mantenerlo en sync con la DB de producción.
+
+2. **`backend/conftest.py`** — espejo de los fixtures para tests
+   - Agregar `CountryStatus.objects.create(...)` con los mismos valores.
+   - Actualizar el `bulk_create` de `StatusTransition` para que el flujo coincida con el de producción.
+
+3. **`applications/workflows/<país>.py`**
+   - Si el nuevo estado dispara un Celery task, importarlo en `on_enter()` y agregar el caso `elif state_code == '<code>': <task>.delay(...)`.
+   - Si el nuevo estado es el primer estado de procesamiento (bootstrap), sobrescribir `get_bootstrap_state()` para devolver su `code`.
+
+4. **`applications/tasks.py`** _(solo si el estado dispara un task nuevo)_
+   - Agregar `@shared_task(bind=True, max_retries=3, name='<nombre>')`.
+   - Incluir el guard de idempotencia: `if app.status_code != '<code>': return`.
+   - Transicionar al estado siguiente vía `CreditApplicationService.update_status(...)`.
+
+5. **Tests** — actualizar `applications/tests/test_applications.py`
+   - Corregir aserciones de status en `TestCreate` si cambia el estado de bootstrap.
+   - Agregar o ajustar helpers de avance de estado en `TestTasks._advance_*` si los task tests necesitan pasar por el nuevo estado antes de ejecutar una tarea.
+   - Ajustar `TestStatusHistory` si cambia el conteo de entradas o los valores `from_status`/`to_status`.

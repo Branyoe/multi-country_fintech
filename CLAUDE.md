@@ -205,6 +205,30 @@ class BaseCountryValidator(ABC):
 - `BankData` es un `@dataclass` con campos `provider_name`, `account_status`, `total_debt`, `credit_score`, `raw_response`
 - Para añadir un país: crear `XYCountryValidator`, registrar en `registry.py`, añadir estados/transiciones en fixtures
 
+### Cómo agregar un nuevo estado a un país
+
+1. **`backend/fixtures/statuses.json`**
+   - Agregar el `CountryStatus` con un PK nuevo, `country` = PK del país, `code`, `label`, `order` correcto (ajustar el `order` de los estados siguientes si es necesario).
+   - Agregar las `StatusTransition` que conectan el nuevo estado (from/to) con los estados adyacentes. Eliminar o redirigir las transiciones antiguas que el nuevo estado reemplaza.
+
+2. **`backend/conftest.py`** — espejo de los fixtures para tests
+   - Agregar `CountryStatus.objects.create(...)` con los mismos valores.
+   - Actualizar el `bulk_create` de `StatusTransition` para que el flujo en tests coincida con el de producción.
+
+3. **`applications/workflows/<país>.py`**
+   - Si el nuevo estado dispara un Celery task, importarlo en `on_enter()` y agregar el caso `elif state_code == '<code>': <task>.delay(...)`.
+   - Si el nuevo estado es el primer estado de procesamiento (bootstrap), sobrescribir `get_bootstrap_state()` para devolver su `code`.
+
+4. **`applications/tasks.py`** (solo si el estado dispara un task nuevo)
+   - Agregar `@shared_task(bind=True, max_retries=3, name='<nombre>')`.
+   - Incluir el guard de idempotencia: `if app.status_code != '<code>': return`.
+   - Transicionar al estado siguiente vía `CreditApplicationService.update_status(...)`.
+
+5. **Tests** — actualizar `applications/tests/test_applications.py`
+   - Corregir aserciones de status en `TestCreate` si cambia el estado de bootstrap.
+   - Agregar o ajustar helpers de avance de estado en `TestTasks._advance_*` si los tasks tests necesitan llegar al nuevo estado antes de ejecutar una tarea.
+   - Ajustar `TestStatusHistory` si cambia el conteo de entradas o los valores de `from_status`/`to_status`.
+
 ### Cache de países
 - `countries/cache.py::get_countries_cached()` → `{code: Country}` desde Redis, con `prefetch_related('statuses')`
 - Invalidación automática via `post_save`/`post_delete` signals conectados en `CountriesConfig.ready()`
