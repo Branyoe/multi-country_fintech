@@ -9,8 +9,30 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 | **Frontend** | Vite 8 + React 19 + TypeScript + Tailwind v4 + shadcn/ui |
 | **Backend** | Django 6 + Django REST Framework + SimpleJWT + Whitenoise |
 | **Tareas async** | Celery (workers) + Redis |
-| **Base de datos** | PostgreSQL 16 (Docker) / SQLite (dev local sin Docker) |
+| **Base de datos** | PostgreSQL 16 (Docker) |
 | **Contenedores** | Docker Compose + Make |
+
+---
+
+## Instalación
+
+Prerrequisitos: Docker Desktop y `make`. Docker es el único entorno soportado — no hay soporte para ejecución local sin contenedores.
+
+**Dev** — hot-reload:
+```bash
+make dev
+```
+
+**Prod local** — Daphne + Nginx, imágenes compiladas:
+```bash
+make prod
+```
+
+El env se crea automáticamente en el primer arranque. Acceso en ambos casos: `http://localhost:3000`.
+
+Para detener: `make dev-down` / `make prod-down` — Para resetear BD: `make dev-clean` / `make prod-clean`
+
+> Kubernetes local: ver sección [Kubernetes](#kubernetes).
 
 ---
 
@@ -20,9 +42,9 @@ El proyecto tiene dos configuraciones Docker:
 
 | | **Dev** (`docker-compose.dev.yml`) | **Prod** (`docker-compose.prod.yml`) |
 |---|---|---|
-| Backend server | Django `runserver` + auto-reload | Gunicorn (2 workers) |
+| Backend server | Django `runserver` + auto-reload | Daphne ASGI (HTTP + WebSockets) |
 | Frontend | Vite dev server + HMR | Nginx sirviendo build estático |
-| Static files | Django debug | Whitenoise vía Gunicorn |
+| Static files | Django debug | Whitenoise vía Daphne |
 | Hot-reload | Sí (backend + frontend) | No |
 | Celery workers | 1 réplica | 2 réplicas |
 | Base de datos | `bravo_dev` | `bravo` |
@@ -31,132 +53,21 @@ El proyecto tiene dos configuraciones Docker:
 
 ---
 
-## Desarrollo con Docker (recomendado)
-
-Todos los servicios corren en contenedores con hot-reload: los cambios de código se reflejan instantáneamente sin reconstruir imágenes.
-
-**Prerrequisitos:** Docker Desktop + `make`.
-
-```bash
-# 1. Copiar variables de entorno para dev
-cp backend/.env.example backend/.env.dev
-
-# 2. Construir imágenes (solo la primera vez o al cambiar deps)
-make dev-build
-
-# 3. Levantar el entorno
-make dev
-```
-
-**Accesos:**
-
-| Servicio | URL |
-|---|---|
-| Frontend (HMR) | http://localhost:3000 |
-| API directa | http://localhost:8000/api/ |
-| Django Admin | http://localhost:8000/admin/ |
-| PostgreSQL | `localhost:5432` — DB: `bravo_dev`, user/pass: `bravo/bravo` |
-| Redis | `localhost:6379` |
-
-**Crear superusuario:**
-
-```bash
-docker compose -f docker-compose.dev.yml exec api python manage.py createsuperuser
-```
-
-**Hot-reload:**
-
-| Servicio | Comportamiento |
-|---|---|
-| Backend | `runserver` detecta cambios en `.py` y recarga automáticamente |
-| Frontend | Vite HMR actualiza el browser sin recargar la página |
-| Celery | Requiere reinicio manual: `docker compose -f docker-compose.dev.yml restart celery_worker` |
-
----
-
-## Producción local con Docker
-
-Simula el entorno productivo: Gunicorn + Nginx, imágenes compiladas, sin hot-reload.
-
-```bash
-# 1. Copiar variables de entorno
-cp backend/.env.example backend/.env.prod
-
-# 2. Construir y levantar
-make prod-build
-make prod
-```
-
-**Accesos:**
-
-| Servicio | URL |
-|---|---|
-| Frontend (Nginx) | http://localhost:3000 |
-| Django Admin | http://localhost:3000/admin/ |
-| PostgreSQL | `localhost:5432` — DB: `bravo`, user/pass: `bravo/bravo` |
-| Redis | `localhost:6379` |
-
-> El primer arranque aplica migraciones, carga los usuarios de fixtures (`admin@dev.local` y `user@dev.local`) y recolecta los archivos estáticos automáticamente.
-
----
-
 ## Comandos Make
 
 ```bash
-# ── Dev ──────────────────────────────────────────────────────────────────────
-make dev-build      # construir imágenes dev (primera vez o al cambiar deps)
-make dev            # levantar entorno dev con hot-reload
-make dev-down       # detener entorno dev
-make dev-clean      # detener + eliminar volúmenes dev (reset BD)
-make logs-dev       # seguir logs del entorno dev
+make dev            # crea .env.dev si falta, construye e inicia (hot-reload)
+make dev-down       # detener
+make dev-clean      # detener + eliminar volúmenes (reset BD)
+make logs-dev       # tail de logs
 
-# ── Prod ─────────────────────────────────────────────────────────────────────
-make prod-build     # construir imágenes prod
-make prod           # levantar entorno prod
-make prod-down      # detener entorno prod
-make prod-clean     # detener + eliminar volúmenes prod (reset BD)
-make logs-prod      # seguir logs del entorno prod
+make prod           # crea .env.prod si falta, construye e inicia
+make prod-down
+make prod-clean
+make logs-prod
 ```
 
----
-
-## Dev local — sin Docker
-
-Para desarrollo ultra-rápido con SQLite y sin contenedores.
-
-**Prerrequisitos:** Python 3.13+, [uv](https://docs.astral.sh/uv/getting-started/installation/), Node 22+.
-
-#### Backend
-
-```bash
-# Primera vez: dependencias + migraciones + fixtures
-bash backend/gen.sh
-
-# Servidor de desarrollo
-uv run backend/manage.py runserver
-# → http://localhost:8000
-```
-
-#### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-# → http://localhost:3000
-```
-
-El proxy de Vite (`/api/`, `/admin/`, `/static/`) apunta a `http://localhost:8000` por defecto.
-
-**Variables de entorno** (`backend/.env`):
-```env
-SECRET_KEY=dev-secret
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://localhost:8000
-CELERY_BROKER_URL=redis://localhost:6379/0
-```
+Fixtures cargados al primer arranque: `admin@dev.local / admin123` y `user@dev.local / user1234`.
 
 ---
 
@@ -286,7 +197,7 @@ bravo-test/
 │   ├── fixtures/          # Datos iniciales (admin)
 │   ├── Dockerfile.prod    # Imagen producción (multi-stage)
 │   ├── Dockerfile.dev     # Imagen desarrollo (deps only, sin código)
-│   ├── entrypoint.prod.sh # migrate → loaddata → collectstatic → gunicorn
+│   ├── entrypoint.prod.sh # migrate → loaddata → collectstatic → daphne
 │   ├── .env.example       # Plantilla de variables de entorno
 │   ├── .env.prod        # Config para prod Docker (no commitear)
 │   └── .env.dev           # Config para dev Docker (no commitear)
@@ -306,6 +217,88 @@ bravo-test/
 │   └── flows/             # Flujos auth, solicitud de crédito
 ├── docker-compose.prod.yml     # Orquestación producción
 ├── docker-compose.dev.yml # Orquestación desarrollo (hot-reload)
+├── k8s/                   # Manifests de Kubernetes (ver sección siguiente)
 ├── Makefile               # Shortcuts: make dev / make prod
 └── CLAUDE.md              # Instrucciones para el asistente IA
 ```
+
+---
+
+## Kubernetes
+
+Namespace: `bravo`. Requiere un controlador Ingress nginx instalado en el cluster.
+
+### Estructura de k8s/
+
+```
+k8s/
+├── namespace.yaml
+├── config/configmap-api.yaml       # Variables no sensibles (DB_HOST, Redis URLs, ALLOWED_HOSTS…)
+├── secrets/secret-api.yaml         # Template — completar y NO commitear con valores reales
+├── storage/pvc-postgres.yaml       # PVC 10Gi ReadWriteOnce para Postgres
+├── postgres/                       # StatefulSet + Service headless
+├── redis/                          # Deployment (Recreate) + Service
+├── api/
+│   ├── job-migrate.yaml            # Corre migrate+loaddata una sola vez antes del Deployment
+│   ├── deployment-api.yaml         # Daphne ASGI, 2 réplicas
+│   └── service-api.yaml
+├── celery/deployment-celery.yaml   # 2 réplicas × concurrency 2, sin Service
+├── frontend/                       # Nginx SPA, 2 réplicas + Service
+└── ingress/ingress.yaml            # Todo entra por frontend:80 — Nginx proxea /api/ /ws/ internamente
+```
+
+**Notas de configuración:**
+- `api` y `celery-worker` usan la misma imagen; `celery` solo cambia el `command`.
+- Las migrations corren en `job-migrate.yaml` (no en el Deployment) para evitar race condition con 2 réplicas arrancando en paralelo.
+- El Ingress apunta todo a `frontend:80`. El Nginx interno ya tiene los bloques `/api/`, `/ws/`, `/static/` correctamente configurados con los headers de WebSocket — no se duplica lógica en el Ingress.
+- Redis usa DB0 (broker), DB1 (caché) y DB2 (channel layer) — un solo Service, tres bases de datos.
+- `storageClassName` en el PVC está sin hardcodear; usar el default del cluster o sobreescribir según proveedor.
+
+### Simulación local con minikube
+
+Requiere minikube instalado (`winget install Kubernetes.minikube`) y Docker Desktop corriendo.
+
+```bash
+# 1. Arrancar cluster con el addon de Ingress
+minikube start
+minikube addons enable ingress
+
+# 2. Apuntar Docker al daemon de minikube (las imágenes se construyen dentro del cluster)
+#    En PowerShell:
+minikube -p minikube docker-env --shell powershell | Invoke-Expression
+#    En bash/WSL:
+eval $(minikube docker-env)
+
+# 3. Construir imágenes (quedan disponibles dentro de minikube sin push a registry)
+docker build -t bravo-api:local     ./backend  -f ./backend/Dockerfile.prod
+docker build -t bravo-frontend:local ./frontend -f ./frontend/Dockerfile.prod \
+  --build-arg VITE_API_BASE_URL=/api
+
+# 4. Reemplazar los nombres de imagen en los manifests:
+#    REPLACE_WITH_YOUR_REGISTRY/bravo-api:TAG     → bravo-api:local
+#    REPLACE_WITH_YOUR_REGISTRY/bravo-frontend:TAG → bravo-frontend:local
+
+# 5. Completar k8s/secrets/secret-api.yaml y cambiar REPLACE_WITH_YOUR_DOMAIN → bravo.local
+#    en configmap-api.yaml e ingress.yaml
+
+# 6. Aplicar
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secrets/ -f k8s/config/ -f k8s/storage/
+kubectl apply -f k8s/postgres/ -f k8s/redis/
+kubectl wait --for=condition=ready pod -l app=postgres -n bravo --timeout=120s
+kubectl apply -f k8s/api/job-migrate.yaml
+kubectl wait --for=condition=complete job/migrate -n bravo --timeout=120s
+kubectl apply -f k8s/api/ -f k8s/celery/ -f k8s/frontend/ -f k8s/ingress/
+
+# 7. Exponer el Ingress en localhost (dejarlo corriendo en otra terminal)
+minikube tunnel
+
+# 8. Registrar el dominio local (una sola vez)
+#    Agregar en C:\Windows\System32\drivers\etc\hosts:
+#    127.0.0.1  bravo.local
+```
+
+Acceso: `http://bravo.local`
+
+Para detener: `minikube stop`. Para destruir todo: `minikube delete`.
+
