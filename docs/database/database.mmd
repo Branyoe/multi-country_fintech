@@ -2,7 +2,7 @@ erDiagram
 
     USERS {
         uuid id PK
-        string email
+        string email UK
         string hashed_password
         string role
         boolean is_active
@@ -11,16 +11,43 @@ erDiagram
         timestamp created_at
     }
 
+    COUNTRY {
+        bigint id PK
+        string code UK
+        string label
+        string document_type
+        string document_hint
+        string document_example
+        string document_regex
+        boolean is_active
+    }
+
+    COUNTRY_STATUS {
+        bigint id PK
+        bigint country_id FK
+        string code
+        string label
+        boolean is_initial
+        boolean is_terminal
+        int order
+    }
+
+    STATUS_TRANSITION {
+        bigint id PK
+        bigint from_status_id FK
+        bigint to_status_id FK
+    }
+
     CREDIT_APPLICATIONS {
         uuid id PK
         uuid user_id FK
-        string country
+        bigint country_ref_id FK
         string full_name
         string document_type
         string document_number
         decimal amount_requested
         decimal monthly_income
-        string status
+        bigint status_id FK
         timestamp requested_at
         timestamp updated_at
     }
@@ -39,7 +66,7 @@ erDiagram
         uuid application_id FK
         string provider_name
         decimal total_debt
-        decimal credit_score
+        int credit_score
         string account_status
         jsonb raw_response
         timestamp fetched_at
@@ -51,44 +78,16 @@ erDiagram
         string from_status
         string to_status
         string changed_by
+        jsonb metadata
         timestamp changed_at
     }
 
-    ASYNC_JOBS {
-        uuid id PK
-        uuid application_id FK
-        string job_type
-        string status
-        jsonb payload
-        int attempts
-        timestamp created_at
-        timestamp processed_at
-    }
-
-    AUDIT_LOG {
-        uuid id PK
-        uuid application_id FK
-        string event_type
-        string actor
-        jsonb metadata
-        timestamp occurred_at
-    }
-
-    WEBHOOK_EVENTS {
-        uuid id PK
-        uuid application_id FK
-        string direction
-        string source
-        string event_type
-        jsonb payload
-        int http_status
-        timestamp received_at
-    }
-
     USERS ||--o{ CREDIT_APPLICATIONS : "crea"
+    COUNTRY ||--o{ COUNTRY_STATUS : "define estados"
+    COUNTRY_STATUS ||--o{ STATUS_TRANSITION : "from_status"
+    COUNTRY_STATUS ||--o{ STATUS_TRANSITION : "to_status"
+    COUNTRY ||--o{ CREDIT_APPLICATIONS : "country_ref"
+    COUNTRY_STATUS ||--o{ CREDIT_APPLICATIONS : "status actual"
     CREDIT_APPLICATIONS ||--o{ COUNTRY_VALIDATIONS : "tiene"
     CREDIT_APPLICATIONS ||--|| BANK_PROVIDER_DATA : "tiene"
     CREDIT_APPLICATIONS ||--o{ APPLICATION_STATUS_HISTORY : "registra"
-    CREDIT_APPLICATIONS ||--o{ ASYNC_JOBS : "genera"
-    CREDIT_APPLICATIONS ||--o{ AUDIT_LOG : "genera"
-    CREDIT_APPLICATIONS ||--o{ WEBHOOK_EVENTS : "asocia"
