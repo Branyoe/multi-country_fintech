@@ -1,136 +1,203 @@
 # Reporte de avance — Prueba Técnica Bravo
 
-> Análisis honesto del estado actual del proyecto contra los requisitos de la prueba técnica.
+> Análisis actualizado del estado real del código frente a Prueba Técnica.pdf.
 > Fecha: 2026-04-10
 
 ---
 
 ## Resumen ejecutivo
 
-**Avance global estimado: ~70%**
+**Avance global estimado: ~68%**
 
-El proyecto tiene una base sólida: arquitectura limpia, máquina de estados robusta, pipeline asíncrono funcional y realtime vía WebSockets. Se avanzó en un faltante crítico implementando webhook outbound para decisión final. Aún faltan piezas explícitamente requeridas en el PDF: triggers de PostgreSQL, manifiestos de Kubernetes y un README completo en la raíz con análisis de escalabilidad.
+El proyecto está bien encaminado en arquitectura, flujo de estados, asincronía con Celery, webhook outbound y actualización realtime por WebSocket. Los principales gaps para cumplimiento del documento siguen siendo:
 
----
-
-## Requisitos funcionales
-
-| Req | Descripción | Estado | Avance | Observación |
-|-----|------------|--------|--------|-------------|
-| 3.1 | Crear solicitudes de crédito | ✅ Completo | 100% | POST `/api/applications/`, form en frontend, pipeline async automático |
-| 3.2 | Validación de reglas por país | ⚠️ Parcial | 33% | Solo MX y CO implementados. El PDF menciona 6 países; el mínimo requerido es 2, así que pasa el corte pero es lo mínimo indispensable |
-| 3.3 | Integración con proveedor bancario | ⚠️ Parcial | 60% | La arquitectura del validator es correcta (strategy pattern), pero `fetch_bank_data()` devuelve datos hardcodeados. No hay llamada HTTP real ni simulación con delay/error realista |
-| 3.4 | Flujo de estados por país | ✅ Completo | 100% | `StatusTransition` en DB enforza transiciones válidas, historial inmutable en `ApplicationStatusHistory` |
-| 3.5 | Consultar una solicitud | ✅ Completo | 100% | GET `/api/applications/{id}/` con historial de estados anidado |
-| 3.6 | Listar solicitudes con filtros | ✅ Completo | 100% | Filtro por país, estado, búsqueda full-text, ordenamiento, paginación DRF |
-| 3.7 | Procesamiento asíncrono y eventos | ⚠️ Parcial | 65% | Celery funciona bien. **Falta**: el PDF exige explícitamente "capacidades nativas de base de datos (funciones y mecanismos de disparo en PostgreSQL)". No existe ningún trigger ni función a nivel de BD |
-| 3.8 | Webhooks / procesos externos | ✅ Completo | 100% | Webhook outbound implementado en `notify_final_decision_task`: POST configurable (`WEBHOOK_URL`), payload de decisión final, idempotency key y retry estricto vía Celery |
-| 3.9 | Concurrencia y procesamiento en paralelo | ⚠️ Parcial | 70% | Celery está configurado con múltiples workers en prod (`replicas: 2`, `concurrency: 2`). El diseño es correcto pero no está documentado en el README como el PDF requiere |
-| 3.10 | Actualización en tiempo real (frontend) | ✅ Completo | 95% | WebSocket vía Django Channels, consumer autenticado con JWT, frontend actualiza timeline por aplicación en tiempo real |
+1. Falta de mecanismos nativos de PostgreSQL (funciones + triggers) conectados a trabajo asíncrono (bloqueante de 3.7).
+2. Ausencia total de manifiestos Kubernetes (bloqueante de 4.8 y sección 6).
+3. Falta de análisis de escalabilidad solicitado explícitamente en README (4.5).
+4. Seguridad de PII incompleta (`document_number` en texto plano).
+5. Frontend no permite actualizar estado de solicitud (requerido en sección 5).
 
 ---
 
-## Requisitos no funcionales
+## Evidencia revisada
 
-| Req | Descripción | Estado | Avance | Observación |
-|-----|------------|--------|--------|-------------|
-| 4.1 | Arquitectura modular y extensible | ✅ Completo | 95% | Capas bien separadas: views → services → tasks → validators → registry. Agregar un país nuevo requiere solo un archivo nuevo y una entrada en el registry |
-| 4.2 | Seguridad de APIs | ⚠️ Parcial | 65% | JWT implementado correctamente (access 15min / refresh 7 días), aislamiento por usuario en todos los endpoints. **Problema**: `document_number` se almacena en texto plano en la BD (PII). El PDF menciona explícitamente "manejo seguro de PII" |
-| 4.3 | Observabilidad | ⚠️ Parcial | 40% | Hay logs con `extra` estructurado en puntos clave (transiciones de estado, decisión final, errores WebSocket). Sin embargo: sin configuración de `LOGGING` en `settings.py`, sin handlers a archivo, sin nivel de log configurable por env, sin formato JSON. Los logs de Celery tasks no están estructurados |
-| 4.4 | Reproducibilidad (README + setup) | ⚠️ Parcial | 55% | Docker Compose funcional, Makefile con targets claros. **Problemas**: el README está en `backend/README.md`, no en la raíz del repo. El PDF pide instrucciones para correr en menos de 5 minutos desde la raíz |
-| 4.5 | Escalabilidad / grandes volúmenes | ❌ Ausente | 5% | El PDF exige explícitamente en el README: análisis de índices recomendados, estrategias de particionamiento, consultas críticas y cuellos de botella, estrategias de archivado. Nada de esto existe. Los modelos tienen UUIDs como PK (no óptimo para tablas con millones de filas por fragmentación de índice) |
-| 4.6 | Colas y encolamiento | ✅ Completo | 90% | Celery + Redis broker, 3 tasks con retry, idempotencia, serialización JSON. Solo falta documentación en README |
-| 4.7 | Caching | ✅ Completo | 90% | Redis cache para países con invalidación automática via signals. Documentado en el código pero no en README |
-| 4.8 | Despliegue en Kubernetes | ❌ Ausente | 0% | Solo Docker Compose. El PDF requiere manifiestos YAML de K8s para todos los componentes principales (API, frontend, workers, DB, Redis). Sin esto, el entregable de despliegue no cumple |
+- Requisitos PDF: Prueba Técnica.pdf (secciones 3, 4, 5 y 6).
+- Backend: aplicaciones, validadores, workflows, consumers, settings, compose, entrypoints y tests.
+- Frontend: features/applications (tabla, crear, detalle, socket hook, API).
+- Infra/docs: README raíz, backend/README.md, Makefile, docker-compose dev/prod.
 
 ---
 
-## Entregables requeridos (Sección 6)
+## Requisitos funcionales (Sección 3)
+
+| Req | Descripción | Estado | Avance | Evidencia / nota |
+|-----|-------------|--------|--------|------------------|
+| 3.1 | Crear solicitudes de crédito | ✅ Completo | 95% | POST `/api/applications/`, formulario funcional, historial inicial y arranque de pipeline en backend |
+| 3.2 | Validación de reglas por país | ⚠️ Parcial | 55% | Solo MX/CO implementados; cumple objetivo mínimo de “al menos dos países”, pero no cobertura multipaís total |
+| 3.3 | Integración con proveedor bancario por país | ⚠️ Parcial | 65% | Estrategia por país correcta (`MXCountryValidator`, `COCountryValidator`), pero `fetch_bank_data()` es mock fijo sin integración HTTP real |
+| 3.4 | Estados de solicitud por país | ✅ Completo | 95% | Catálogo de estados/transiciones en BD (`CountryStatus`, `StatusTransition`) + historial inmutable |
+| 3.5 | Consultar solicitud individual | ✅ Completo | 100% | GET `/api/applications/{id}/` retorna detalle + historial |
+| 3.6 | Listar solicitudes filtradas | ✅ Completo | 100% | Filtros por país/estado, búsqueda (`id`, solicitante, creador, documento), ordenamiento y paginación |
+| 3.7 | Procesamiento asíncrono y eventos | ⚠️ Parcial | 60% | Celery y eventos app-level sí; **faltan** funciones/trigger nativos PostgreSQL y flujo DB→trabajo asíncrono |
+| 3.8 | Webhooks / procesos externos | ✅ Completo | 100% | `notify_final_decision_task` con POST configurable, idempotency-key, timeout y retry |
+| 3.9 | Concurrencia y procesamiento paralelo | ⚠️ Parcial | 80% | Prod con workers múltiples (`replicas: 2`, `concurrency=2`) + guards de idempotencia en tasks |
+| 3.10 | Actualización realtime en frontend | ✅ Completo | 95% | Channels + Consumer autenticado + actualización incremental de línea de tiempo |
+
+---
+
+## Requisitos no funcionales (Sección 4)
+
+| Req | Descripción | Estado | Avance | Evidencia / nota |
+|-----|-------------|--------|--------|------------------|
+| 4.1 | Arquitectura modular/extensible | ✅ Completo | 95% | Separación por capas y strategy/registry por país y workflow |
+| 4.2 | Seguridad de APIs y PII | ⚠️ Parcial | 65% | JWT + autorización por usuario bien; PII (`document_number`) sin cifrado y token WS en query string |
+| 4.3 | Observabilidad | ⚠️ Parcial | 70% | Hay `LOGGING` en `settings.py` + `django-db-logger` + logs con `extra`; falta estandarización JSON/centralización/alerting |
+| 4.4 | Reproducibilidad | ⚠️ Parcial | 80% | README raíz + Makefile + Docker Compose; aún hay drift documental respecto al código real |
+| 4.5 | Escalabilidad (análisis en README) | ❌ Ausente | 15% | No existe análisis formal de índices, particionamiento, cuellos de botella y archivado |
+| 4.6 | Colas y encolamiento | ✅ Completo | 90% | Celery/Redis, producción y consumo de tareas, retries e idempotencia |
+| 4.7 | Caching | ✅ Completo | 90% | Cache Redis de países con invalidación automática por señales |
+| 4.8 | Despliegue Kubernetes | ❌ Ausente | 0% | No hay manifiestos YAML ni chart/kustomize |
+
+---
+
+## Entregables (Sección 6)
 
 | Entregable | Estado | Avance | Observación |
 |------------|--------|--------|-------------|
-| Repositorio completo (backend + frontend + async) | ✅ Completo | 95% | Todo en un monorepo bien estructurado |
-| README con instrucciones de instalación | ⚠️ Parcial | 50% | Existe en `backend/README.md`. Falta: raíz del repo, análisis de escalabilidad, descripción de webhooks, estrategia de concurrencia, caching, colas |
-| README con supuestos y decisiones técnicas | ⚠️ Parcial | 60% | Hay decisiones documentadas pero incompletas para lo que pide el PDF |
-| Archivos de configuración para Kubernetes | ❌ Ausente | 0% | No existen |
-| Makefile con comandos clave | ✅ Completo | 100% | `make dev`, `make prod`, `make dev-down`, `make dev-clean`, `make logs-dev`, etc. |
+| Repositorio con backend/frontend/async/colas/cache/despliegue | ⚠️ Parcial | 85% | Backend/frontend/async/colas/cache sí; despliegue K8s no |
+| README completo (setup, supuestos, seguridad, escalabilidad, concurrencia, colas, cache, webhooks) | ⚠️ Parcial | 60% | Hay README raíz, pero incompleto para escalabilidad y con inconsistencias |
+| Configuración Kubernetes | ❌ Ausente | 0% | No existe carpeta/manifiestos |
+| Makefile/Justfile | ✅ Completo | 100% | Targets dev/prod/logs/clean/full-restart presentes |
 
 ---
 
-## Frontend (Sección 5)
+## Frontend requerido (Sección 5)
 
-| Funcionalidad | Estado | Avance |
-|---------------|--------|--------|
-| Crear solicitudes | ✅ | 100% — Modal con form dinámico, hints por país, validación Zod + errores de API inline |
-| Ver lista de solicitudes | ✅ | 100% — DataTable con filtros, ordenamiento y paginación manual |
-| Ver detalles de una solicitud | ✅ | 90% — Panel de detalle presente |
-| Actualizar estado | ✅ | 90% — PATCH con selección de transiciones válidas |
-| Visualizar cambios en tiempo real | ✅ | 95% — Timeline de transiciones vía WebSocket por aplicación |
-
----
-
-## Lo que falta: descripción concreta
-
-### 1. Webhooks (requisito 3.8) — COMPLETADO
-Se implementó webhook outbound en el pipeline asíncrono para estados terminales (`approved`/`rejected`).
-
-**Implementación realizada**:
-- `backend/applications/tasks.py`: `notify_final_decision_task` ahora envía POST a `WEBHOOK_URL`.
-- `backend/config/settings.py`: nuevas variables `WEBHOOK_URL`, `WEBHOOK_TIMEOUT_SECONDS`, `WEBHOOK_RETRY_COUNTDOWN_SECONDS`.
-- `backend/.env.example`: documentación de variables de webhook.
-- `backend/applications/tests/test_applications.py`: pruebas para envío exitoso, skip sin URL, noop en estado no terminal, retry en error y retries agotados.
-
-**Validación**:
-- `uv run pytest applications/tests/test_applications.py -k "notify_final_decision" -q` → 5 passed.
-
-### 2. Triggers de PostgreSQL (requisito 3.7) — BLOQUEANTE
-El PDF dice literalmente: *"Utilizar capacidades nativas de base de datos (funciones y mecanismos de disparo en PostgreSQL)"*. La implementación actual hace todo a nivel de aplicación (Django). Necesita al menos una función PL/pgSQL con un trigger (ej: auditoría en `application_status_history` o notificación via `pg_notify`).
-
-### 3. Kubernetes (requisito 4.8) — BLOQUEANTE
-Manifiestos YAML para: `Deployment` de API, `Deployment` de workers Celery, `Deployment` de frontend, `Service` para cada componente, `Ingress`, `ConfigMap`/`Secret` para variables de entorno. Al menos 4-5 archivos. ~3-4 horas de trabajo.
-
-### 4. README en raíz con análisis completo (requisito 4.4, 4.5) — IMPORTANTE
-El README actual está en `backend/` y no cubre:
-- Análisis de índices recomendados para la tabla `credit_applications`
-- Estrategia de particionamiento (ej: por `country_ref` o por rango de fecha)
-- Consultas críticas y cómo evitar N+1 o full scans
-- Estrategia de archivado para solicitudes antiguas
-- Descripción de la estrategia de caching y su invalidación
-- Descripción del flujo de colas (qué se encola, cómo se consume)
-- Descripción de la estrategia de concurrencia (cómo se escalan los workers)
-
-### 5. PII en texto plano (requisito 4.2) — IMPORTANTE
-`document_number` se guarda sin cifrar. La prueba evalúa "manejo seguro de PII". Solución mínima: cifrado simétrico con `cryptography` (Fernet) en el modelo, o al menos una nota en el README sobre la estrategia de PII con `django-fernet-fields`.
-
-### 6. Configuración de logging estructurado (requisito 4.3) — MENOR
-Sin un bloque `LOGGING` en `settings.py`, los logs no son configurables ni persistibles. Debería existir al menos un handler para `applications` y `countries` con formato JSON.
-
-### 7. Proveedor bancario simulado (requisito 3.3) — MENOR
-`fetch_bank_data()` devuelve un `BankData` hardcodeado en ambos países. El evaluador esperará ver al menos un delay real (hay un `asyncio.sleep` en el task, pero la "llamada" al banco es instantánea y determinista). Añadir variabilidad (errores ocasionales, respuestas distintas por número de documento) haría la demo más convincente.
+| Funcionalidad | Estado | Avance | Observación |
+|---------------|--------|--------|-------------|
+| Crear solicitudes | ✅ | 100% | Modal funcional con validación y manejo de errores |
+| Ver lista de solicitudes | ✅ | 100% | DataTable con filtros, ordenamiento y paginación server-side |
+| Ver detalle de solicitud | ✅ | 95% | Vista de detalle estable y copy mejorado |
+| Actualizar estado | ❌ | 20% | No existe interacción de UI que llame PATCH en frontend |
+| Realtime en UI | ✅ | 95% | Línea de tiempo en vivo por WebSocket |
 
 ---
 
-## Estimación de esfuerzo para completar
+## Hallazgos clave (actualización respecto al reporte previo)
 
-| Ítem | Esfuerzo estimado | Impacto en nota |
-|------|------------------|-----------------|
-| Trigger PostgreSQL (auditoría o pg_notify) | ~3h | Alto |
-| Manifiestos Kubernetes | ~4h | Alto |
-| README raíz con análisis de escalabilidad | ~3h | Alto |
-| Logging estructurado en settings.py | ~1h | Medio |
-| PII: cifrado de document_number o documentación de estrategia | ~2h | Medio |
-| Simulación bancaria con errores aleatorios | ~1h | Bajo |
-| **Total** | **~14h** | |
+1. Sí existe `LOGGING` en backend (antes se reportaba ausente).
+2. Sí existe README en la raíz (antes se reportaba ausente), pero no cubre 4.5 y tiene drift con el código:
+	- describe Gunicorn en prod, mientras entrypoint usa Daphne.
+	- menciona `/api/applications/countries/`, pero el endpoint real es `/api/countries/`.
+3. El frontend no cumple aún el punto “actualizar estado” del requerimiento 5.
+4. Webhook outbound está correctamente implementado y probado.
 
 ---
 
-## Puntos fuertes del proyecto
+## Tareas faltantes priorizadas (cumplimiento del documento)
 
-Estos aspectos están bien ejecutados y destacarán positivamente ante el evaluador:
+### P0 — Bloqueantes de cumplimiento explícito
 
-- **Arquitectura del validator**: el patrón strategy con `BaseCountryValidator` + registry es extensible de verdad. Agregar un país es agregar un archivo.
-- **Máquina de estados en BD**: `StatusTransition` enforza transiciones a nivel de datos, no solo a nivel de código. Difícil de romper.
-- **WebSockets bien integrados**: la autenticación JWT en el handshake WS, el uso de `transaction.on_commit()` para publicar eventos y el consumer por aplicación están bien pensados.
-- **Idempotencia en Celery**: el guard al inicio de cada task (`if app.status_code != expected: return`) evita efectos secundarios en retries.
-- **Aislamiento multi-tenant**: `get_queryset()` siempre filtra por `request.user`. No hay riesgo de data leakage entre usuarios.
-- **Cache con invalidación automática**: Django signals invalidan el cache de países en cada cambio, sin TTL artificial.
+1. **Implementar trigger + función PostgreSQL + puente a trabajo asíncrono (Req 3.7)**
+	- Idea mínima: crear `application_event_outbox` y una función `fn_enqueue_status_event()`.
+	- Trigger `AFTER INSERT` en `application_status_history` inserta evento en outbox.
+	- Worker Celery consume outbox y despacha lógica asíncrona (webhook, auditoría, notificaciones).
+	- Ejemplo de salida esperada: operación en BD genera fila en outbox sin depender de lógica Python en request.
+
+2. **Agregar manifiestos Kubernetes (Req 4.8 + sección 6)**
+	- Mínimo viable:
+	  - `k8s/api-deployment.yaml`, `k8s/api-service.yaml`
+	  - `k8s/frontend-deployment.yaml`, `k8s/frontend-service.yaml`
+	  - `k8s/celery-deployment.yaml`
+	  - `k8s/postgres-statefulset.yaml`, `k8s/redis-deployment.yaml`
+	  - `k8s/configmap.yaml`, `k8s/secret.example.yaml`, `k8s/ingress.yaml`
+	- Incluir variables de entorno y probes básicas.
+
+3. **Completar README con análisis de escalabilidad (Req 4.5 + sección 6)**
+	- Incluir explícitamente:
+	  - índices recomendados,
+	  - estrategia de particionamiento,
+	  - consultas críticas + mitigación de cuellos,
+	  - archivado/retención.
+
+### P1 — Importantes para nota técnica y riesgo
+
+4. **Completar UI para actualizar estado (Req 5)**
+	- Añadir en detalle un selector de estado permitido + botón “Actualizar”.
+	- Crear método frontend `updateApplicationStatus(id, status)` que haga PATCH.
+	- Refrescar cache local y línea de tiempo tras éxito.
+
+5. **Endurecer manejo de PII (Req 4.2)**
+	- Opción A: cifrado de `document_number` (campo cifrado + clave por entorno).
+	- Opción B (mínima): mascar en respuestas/listados y mantener valor claro solo en flujos estrictamente necesarios.
+	- Documentar decisión y trade-offs en README.
+
+6. **Corregir drift documental README ↔ código**
+	- Runtime prod real (Daphne), endpoint de países correcto, flujo actual de realtime.
+
+### P2 — Mejoras de robustez y demo
+
+7. **Simulación de proveedor bancario más realista (Req 3.3)**
+	- Respuesta variable por documento, fallas intermitentes controladas y latencia distribuida.
+	- Registrar razón de rechazo/aprobación ligada a señal del “proveedor”.
+
+8. **Observabilidad estructurada de punta a punta (Req 4.3)**
+	- Formato JSON consistente, correlation-id por solicitud, logging homogéneo para tasks y webhook.
+
+---
+
+## Priorización alternativa por riesgo (si cambia la estrategia)
+
+| Prioridad por riesgo | Riesgo | Acción recomendada |
+|----------------------|--------|--------------------|
+| R1 | Incumplimiento directo del enunciado (descalificación técnica) | Triggers PostgreSQL + K8s + README escalabilidad |
+| R2 | Riesgo de seguridad / compliance | Protección de PII y revisión de exposición de datos |
+| R3 | Riesgo funcional de demo | UI de actualización de estado + pruebas E2E |
+| R4 | Riesgo operativo | Observabilidad y simulación de proveedor más robusta |
+
+---
+
+## Estimación de esfuerzo restante
+
+| Tarea | Esfuerzo estimado | Impacto |
+|------|--------------------|---------|
+| Trigger + outbox + consumidor async | 4–6h | Alto |
+| Manifiestos Kubernetes base | 4–6h | Alto |
+| README de escalabilidad completo | 2–3h | Alto |
+| UI actualización de estado + test | 2–3h | Alto |
+| PII (cifrado/masking + doc) | 2–4h | Medio-Alto |
+| Observabilidad estructurada | 1–2h | Medio |
+| Simulación proveedor realista | 1–2h | Medio |
+| **Total aproximado** | **16–26h** | |
+
+---
+
+## Simulación de proveedores bancarios — patrón Adapter
+
+### Problema
+`fetch_bank_data` en `MXCountryValidator` y `COCountryValidator` construía el dataclass `BankData` con datos hardcodeados directamente en el código. No había distinción entre el formato bruto que devuelve cada proveedor bancario real y la representación interna del sistema.
+
+### Solución
+Se introdujo el **patrón Adapter** con tres capas:
+
+1. **Perfiles JSON por proveedor** (`countries/validators/providers/`): cada archivo simula la respuesta real del proveedor con su nomenclatura propia. `cnbv_mx.json` usa campos en español (`score_crediticio`, `deuda_total_mxn`, `estatus_cuenta`) al estilo CNBV; `datacredito_co.json` usa camelCase (`totalObligaciones`, `estadoCuenta`) al estilo DataCrédito. Cada archivo tiene cuatro perfiles con distintos niveles de deuda y score para simular variedad.
+
+2. **Adaptadores por proveedor** (`countries/validators/adapters/`): `CNBVMXAdapter` y `DataCreditoCOAdapter` implementan `BankProviderAdapter.parse(raw) -> BankData`, traduciendo los campos del proveedor al contrato interno. El validator no sabe nada del formato del proveedor.
+
+3. **Selección determinística de perfil**: `fetch_bank_data` selecciona el perfil usando `hashlib.md5(document)` en lugar de `hash()` (que varía por sesión en Python), garantizando que el mismo documento siempre obtiene el mismo perfil simulado.
+
+### Por qué así
+- **Separación de responsabilidades**: el validator sabe *qué* consultar, el adaptador sabe *cómo* interpretar la respuesta. Añadir un proveedor nuevo es crear un JSON + un adapter sin tocar la lógica de validación.
+- **Realismo**: `raw_response` en `BankProviderData` queda guardado en el formato original del proveedor, no en una estructura genérica inventada.
+- **Determinismo en tests**: `hashlib.md5` produce el mismo índice de perfil independientemente de `PYTHONHASHSEED`, por lo que los tests son reproducibles.
+
+---
+
+## Puntos fuertes actuales
+
+- Arquitectura extensible por país con strategy + registry + workflow.
+- Máquina de estados en BD con transiciones controladas y audit trail.
+- Realtime por WebSocket autenticado y actualización incremental de la vista.
+- Pipeline asíncrono con tareas idempotentes y reintentos.
+- Cache de catálogos con invalidación automática.
+- Cobertura de tests backend relevante para flujo principal y webhook.
