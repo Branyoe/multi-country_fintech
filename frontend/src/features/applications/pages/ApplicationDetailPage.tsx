@@ -103,7 +103,7 @@ export default function ApplicationDetailPage() {
   if (!id) {
     return (
       <div className="container mx-auto px-4 sm:px-6 py-8">
-        <p className="text-sm text-destructive">ID de solicitud inválido.</p>
+        <p className="text-sm text-destructive">El identificador de la solicitud no es válido.</p>
       </div>
     )
   }
@@ -111,7 +111,7 @@ export default function ApplicationDetailPage() {
   if (detailQuery.isLoading) {
     return (
       <div className="container mx-auto px-4 sm:px-6 py-8">
-        <p className="text-sm text-muted-foreground">Cargando detalle de solicitud...</p>
+        <p className="text-sm text-muted-foreground">Cargando información de tu solicitud...</p>
       </div>
     )
   }
@@ -119,7 +119,7 @@ export default function ApplicationDetailPage() {
   if (detailQuery.isError || !detailQuery.data) {
     return (
       <div className="container mx-auto px-4 sm:px-6 py-8 space-y-4">
-        <p className="text-sm text-destructive">No fue posible cargar la solicitud.</p>
+        <p className="text-sm text-destructive">No pudimos cargar esta solicitud en este momento.</p>
         <Link to="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
           Volver al listado
         </Link>
@@ -187,18 +187,18 @@ export default function ApplicationDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Timeline de transiciones de estatus</CardTitle>
+            <CardTitle>Línea de tiempo de tu solicitud</CardTitle>
             <CardDescription>
-              Historial cronológico de StatusTransitions para esta solicitud.
+              Aquí puedes ver los cambios de estado de tu solicitud en orden cronológico.
               {' '}
-              {timelineSocketStatus === 'connected' && 'Actualizando en tiempo real.'}
-              {timelineSocketStatus === 'reconnecting' && 'Reconectando actualizaciones en vivo...'}
-              {timelineSocketStatus === 'disconnected' && 'Sin conexión en vivo.'}
+              {timelineSocketStatus === 'connected' && 'Actualización en vivo activa.'}
+              {timelineSocketStatus === 'reconnecting' && 'Recuperando conexión para continuar con las actualizaciones...'}
+              {timelineSocketStatus === 'disconnected' && 'No hay conexión en vivo por ahora.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {timeline.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay transiciones registradas.</p>
+              <p className="text-sm text-muted-foreground">Aún no hay cambios de estado registrados.</p>
             ) : (
               <ol className="space-y-4">
                 {timeline.map((entry: ApplicationStatusTransition, index) => (
