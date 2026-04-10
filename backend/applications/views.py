@@ -27,7 +27,10 @@ class CreditApplicationViewSet(
     ordering = ['-requested_at']
 
     def get_queryset(self):
-        return CreditApplication.objects.filter(user=self.request.user)
+        queryset = CreditApplication.objects.filter(user=self.request.user)
+        if self.action == 'retrieve':
+            return queryset.prefetch_related('status_history')
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'partial_update':

@@ -476,6 +476,24 @@ class TestRetrieve:
         res = auth_client.get(DETAIL_URL(pk))
         assert res.status_code == 404
 
+    def test_retrieve_includes_status_history(self, auth_client):
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+        auth_client.patch(DETAIL_URL(pk), {'status': 'validate_country_rules'}, content_type='application/json')
+
+        res = auth_client.get(DETAIL_URL(pk))
+        assert res.status_code == 200
+        data = res.json()
+        assert 'status_history' in data
+        assert isinstance(data['status_history'], list)
+        assert len(data['status_history']) >= 2
+
+        first = data['status_history'][0]
+        assert 'from_status' in first
+        assert 'to_status' in first
+        assert 'changed_by' in first
+        assert 'changed_at' in first
+        assert 'metadata' in first
+
 
 # ---------------------------------------------------------------------------
 # Actualizar estado

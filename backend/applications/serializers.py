@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.core.validators import MinValueValidator
 from countries.models import Country, CountryStatus, StatusTransition
-from .models import CreditApplication
+from .models import ApplicationStatusHistory, CreditApplication
 
 
 class CreditApplicationSerializer(serializers.ModelSerializer):
@@ -68,10 +68,18 @@ class CreditApplicationStatusSerializer(serializers.ModelSerializer):
         return value
 
 
+class ApplicationStatusHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ApplicationStatusHistory
+        fields = ['from_status', 'to_status', 'changed_by', 'changed_at', 'metadata']
+        read_only_fields = fields
+
+
 class CreditApplicationReadSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
     country    = serializers.ReadOnlyField()
     status     = serializers.SerializerMethodField()
+    status_history = ApplicationStatusHistorySerializer(many=True, read_only=True)
 
     class Meta:
         model = CreditApplication
@@ -80,6 +88,7 @@ class CreditApplicationReadSerializer(serializers.ModelSerializer):
             'document_type', 'document_number',
             'amount_requested', 'monthly_income',
             'status', 'requested_at', 'updated_at',
+            'status_history',
         ]
 
     def get_status(self, obj) -> str:
