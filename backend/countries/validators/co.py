@@ -29,8 +29,5 @@ class COCountryValidator(BaseCountryValidator):
             return False, 'Tu deuda registrada supera el 40% del ingreso mensual', 'non_field_errors'
         return True, '', ''
 
-    def get_initial_task(self) -> str:
-        return 'consulta_buro_co'
-
     def get_validation_rules(self) -> list[str]:
         return ['cc_format', 'deuda_40pct_ingreso']

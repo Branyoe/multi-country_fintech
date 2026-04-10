@@ -66,6 +66,8 @@ class CreditApplicationViewSet(
                 serializer.validated_data['status'],
                 request.user.email,
             )
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(CreditApplicationReadSerializer(application).data)

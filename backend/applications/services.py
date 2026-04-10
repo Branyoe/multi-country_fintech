@@ -1,9 +1,11 @@
-from celery import current_app as celery_app
+import logging
+
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
 from countries.models import Country, CountryStatus, CountryValidation, StatusTransition
 from countries.validators.registry import get_validator
+from .workflows.registry import get_workflow
 from .models import ApplicationStatusHistory, BankProviderData, CreditApplication
 
 
@@ -11,7 +13,26 @@ class BankProviderError(Exception):
     pass
 
 
+logger = logging.getLogger(__name__)
+
+
 class CreditApplicationService:
+
+    @staticmethod
+    def _create_status_history(
+        application: CreditApplication,
+        from_status: str,
+        to_status: str,
+        changed_by: str,
+        metadata: dict | None = None,
+    ) -> None:
+        ApplicationStatusHistory.objects.create(
+            application=application,
+            from_status=from_status,
+            to_status=to_status,
+            changed_by=changed_by,
+            metadata=metadata or {},
+        )
 
     @staticmethod
     def create(data: dict, user) -> CreditApplication:
@@ -52,23 +73,32 @@ class CreditApplicationService:
         )
 
         # Registrar historial del status inicial
-        ApplicationStatusHistory.objects.create(
+        CreditApplicationService._create_status_history(
             application=application,
             from_status='',
             to_status=initial_status.code,
             changed_by=user.email,
+            metadata={'event': 'created'},
         )
 
-        # Disparar task inicial del país (consulta bancaria asíncrona)
-        initial_task = validator.get_initial_task()
-        if initial_task:
-            celery_app.send_task(initial_task, args=[str(application.id)])
+        # Activar flujo state-driven desde el primer estado de procesamiento.
+        CreditApplicationService.update_status(
+            application_id=str(application.id),
+            new_status_code='fetching_bank_data',
+            changed_by='system:create',
+            metadata={'event': 'pipeline_started'},
+        )
+
+        application.refresh_from_db()
 
         return application
 
     @staticmethod
     def update_status(
-        application_id: str, new_status_code: str, changed_by: str
+        application_id: str,
+        new_status_code: str,
+        changed_by: str,
+        metadata: dict | None = None,
     ) -> CreditApplication:
         application = get_object_or_404(CreditApplication, id=application_id)
         from_status = application.status
@@ -94,15 +124,27 @@ class CreditApplicationService:
         application.status = new_status
         application.save(update_fields=['status', 'updated_at'])
 
-        ApplicationStatusHistory.objects.create(
+        CreditApplicationService._create_status_history(
             application=application,
             from_status=from_status.code if from_status else '',
             to_status=new_status.code,
             changed_by=changed_by,
+            metadata=metadata,
         )
 
-        # Disparar task si la transición lo requiere
-        if transition.triggers_task:
-            celery_app.send_task(transition.triggers_task, args=[str(application.id)])
+        logger.info(
+            'application-status-transition',
+            extra={
+                'application_id': str(application.id),
+                'country': application.country,
+                'from_status': from_status.code if from_status else '',
+                'to_status': new_status.code,
+                'changed_by': changed_by,
+            },
+        )
+
+        # Orquestación única del flujo asíncrono por entrada de estado.
+        workflow = get_workflow(application.country)
+        workflow.on_enter(new_status.code, application)
 
         return application
