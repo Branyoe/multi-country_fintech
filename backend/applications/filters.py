@@ -46,4 +46,4 @@ class CreditApplicationFilter(django_filters.FilterSet):
         statuses = self._normalized_values(value, name)
         if not statuses:
             return queryset
-        return queryset.filter(status__in=statuses)
+        return queryset.filter(status__code__in=statuses)

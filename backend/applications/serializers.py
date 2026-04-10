@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.core.validators import MinValueValidator
-from countries.models import Country
+from countries.models import Country, CountryStatus, StatusTransition
 from .models import CreditApplication
 
 
@@ -36,28 +36,42 @@ class CreditApplicationSerializer(serializers.ModelSerializer):
 
 
 class CreditApplicationStatusSerializer(serializers.ModelSerializer):
+    status = serializers.CharField()
+
     class Meta:
         model = CreditApplication
         fields = ['status']
 
     def validate_status(self, value):
         current = self.instance.status
-        allowed_transitions = {
-            CreditApplication.Status.PENDING:      {CreditApplication.Status.UNDER_REVIEW, CreditApplication.Status.APPROVED, CreditApplication.Status.REJECTED},
-            CreditApplication.Status.UNDER_REVIEW: {CreditApplication.Status.APPROVED, CreditApplication.Status.REJECTED},
-            CreditApplication.Status.APPROVED:     set(),
-            CreditApplication.Status.REJECTED:     set(),
-        }
-        if value not in allowed_transitions.get(current, set()):
+
+        if current and current.is_terminal:
             raise serializers.ValidationError(
-                f"Cannot transition from '{current}' to '{value}'."
+                f"El estado '{current.code}' es terminal y no acepta transiciones."
             )
+
+        country = self.instance.country_ref
+        target = CountryStatus.objects.filter(country=country, code=value).first()
+        if target is None:
+            raise serializers.ValidationError(
+                f"Estado '{value}' no existe para este país."
+            )
+
+        if not StatusTransition.objects.filter(
+            from_status=current, to_status=target
+        ).exists():
+            from_code = current.code if current else '—'
+            raise serializers.ValidationError(
+                f"Transición '{from_code}' → '{value}' no permitida."
+            )
+
         return value
 
 
 class CreditApplicationReadSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
-    country = serializers.ReadOnlyField()
+    country    = serializers.ReadOnlyField()
+    status     = serializers.SerializerMethodField()
 
     class Meta:
         model = CreditApplication
@@ -67,3 +81,6 @@ class CreditApplicationReadSerializer(serializers.ModelSerializer):
             'amount_requested', 'monthly_income',
             'status', 'requested_at', 'updated_at',
         ]
+
+    def get_status(self, obj) -> str:
+        return obj.status_code

@@ -23,7 +23,7 @@ class CreditApplicationViewSet(
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
     filterset_class = CreditApplicationFilter
     search_fields = ['full_name', 'document_number']
-    ordering_fields = ['full_name', 'document_type', 'document_number', 'amount_requested', 'monthly_income', 'requested_at', 'updated_at', 'status', 'country_ref__code']
+    ordering_fields = ['full_name', 'document_type', 'document_number', 'amount_requested', 'monthly_income', 'requested_at', 'updated_at', 'status__order', 'country_ref__code']
     ordering = ['-requested_at']
 
     def get_queryset(self):
@@ -60,11 +60,14 @@ class CreditApplicationViewSet(
             application, data=request.data, partial=True
         )
         serializer.is_valid(raise_exception=True)
-        application = CreditApplicationService.update_status(
-            str(application.id),
-            serializer.validated_data['status'],
-            request.user.email,
-        )
+        try:
+            application = CreditApplicationService.update_status(
+                str(application.id),
+                serializer.validated_data['status'],
+                request.user.email,
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(CreditApplicationReadSerializer(application).data)
 
 
