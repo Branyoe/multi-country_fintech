@@ -335,6 +335,53 @@ class TestList:
         desc_countries = [row['country'] for row in desc.json()['results']]
         assert desc_countries[:2] == ['MX', 'CO']
 
+    def test_list_ordering_by_document_type(self, auth_client):
+        auth_client.post(
+            LIST_URL,
+            payload(country='MX', document_number='PERJ800101HDFRZN06'),
+            content_type='application/json',
+        )
+        auth_client.post(
+            LIST_URL,
+            co_payload(document_number='2233445566'),
+            content_type='application/json',
+        )
+
+        asc = auth_client.get(LIST_URL + '?ordering=document_type')
+        assert asc.status_code == 200
+        asc_types = [row['document_type'] for row in asc.json()['results']]
+        assert asc_types[:2] == ['CC', 'CURP']
+
+        desc = auth_client.get(LIST_URL + '?ordering=-document_type')
+        assert desc.status_code == 200
+        desc_types = [row['document_type'] for row in desc.json()['results']]
+        assert desc_types[:2] == ['CURP', 'CC']
+
+    def test_list_ordering_by_document_number(self, auth_client):
+        mx_res = auth_client.post(
+            LIST_URL,
+            payload(document_number='PERJ800101HDFRZN98'),
+            content_type='application/json',
+        )
+        assert mx_res.status_code == 201
+
+        co_res = auth_client.post(
+            LIST_URL,
+            co_payload(document_number='1111111111'),
+            content_type='application/json',
+        )
+        assert co_res.status_code == 201
+
+        asc = auth_client.get(LIST_URL + '?ordering=document_number')
+        assert asc.status_code == 200
+        asc_numbers = [row['document_number'] for row in asc.json()['results']]
+        assert asc_numbers[:2] == ['1111111111', 'PERJ800101HDFRZN98']
+
+        desc = auth_client.get(LIST_URL + '?ordering=-document_number')
+        assert desc.status_code == 200
+        desc_numbers = [row['document_number'] for row in desc.json()['results']]
+        assert desc_numbers[:2] == ['PERJ800101HDFRZN98', '1111111111']
+
 
 # ---------------------------------------------------------------------------
 # Detalle
