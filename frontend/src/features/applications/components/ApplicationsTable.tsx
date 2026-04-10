@@ -47,7 +47,7 @@ export function ApplicationsTable() {
       queryFn={fetchApplications}
       initialOrdering="-requested_at"
       filterConfigs={filterConfigs}
-      disableOrderingColumns={['document_type', 'document_number']}
+      disableOrderingColumns={[]}
       emptyState={
         <p className="text-sm text-muted-foreground">
           No hay solicitudes. Crea una nueva para empezar.

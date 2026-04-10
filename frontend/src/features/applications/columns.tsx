@@ -63,12 +63,12 @@ export function createApplicationColumns(
   {
     accessorKey: 'document_type',
     header: 'Tipo doc.',
-    enableSorting: false,
+    meta: { orderingKey: 'document_type' },
   },
   {
     accessorKey: 'document_number',
     header: 'Documento',
-    enableSorting: false,
+    meta: { orderingKey: 'document_number' },
   },
   {
     accessorKey: 'amount_requested',
