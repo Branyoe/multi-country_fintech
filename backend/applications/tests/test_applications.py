@@ -58,6 +58,10 @@ def user(db):
 def other_user(db):
     return User.objects.create_user(email='other@test.com', password='pass1234')
 
+@pytest.fixture
+def admin_user(db):
+    return User.objects.create_user(email='admin@test.com', password='pass1234', role='admin')
+
 def _make_auth_client(email, password):
     c = Client()
     res = c.post(
@@ -76,6 +80,10 @@ def auth_client(user):
 @pytest.fixture
 def other_auth_client(other_user):
     return _make_auth_client('other@test.com', 'pass1234')
+
+@pytest.fixture
+def admin_auth_client(admin_user):
+    return _make_auth_client('admin@test.com', 'pass1234')
 
 @pytest.fixture(autouse=True)
 def mock_workflow_tasks():
@@ -407,6 +415,21 @@ class TestList:
         res = auth_client.get(LIST_URL)
         assert res.status_code == 200
         assert res.json()['count'] == 2
+
+    def test_admin_can_list_all_applications(self, auth_client, other_auth_client, admin_auth_client):
+        auth_client.post(LIST_URL, payload(), content_type='application/json')
+        other_auth_client.post(LIST_URL, co_payload(), content_type='application/json')
+
+        res = admin_auth_client.get(LIST_URL)
+        assert res.status_code == 200
+        assert res.json()['count'] == 2
+
+    def test_admin_can_retrieve_any_application(self, auth_client, admin_auth_client):
+        pk = auth_client.post(LIST_URL, payload(), content_type='application/json').json()['id']
+
+        res = admin_auth_client.get(DETAIL_URL(pk))
+        assert res.status_code == 200
+        assert res.json()['id'] == pk
 
     def test_list_filter_by_country(self, auth_client):
         auth_client.post(LIST_URL, payload(), content_type='application/json')
