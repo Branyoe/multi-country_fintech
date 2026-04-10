@@ -1,11 +1,11 @@
 from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 
-from common.applications.countries.registry import get_validator
+from countries.models import CountryValidation
+from countries.validators.registry import get_validator
 from .models import (
     ApplicationStatusHistory,
     BankProviderData,
-    CountryValidation,
     CreditApplication,
 )
 

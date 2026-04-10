@@ -34,7 +34,7 @@ class BaseCountryValidator(ABC):
         ...
 
     def validate_document(self, document: str) -> tuple[bool, str]:
-        from applications.cache import get_countries_cached
+        from countries.cache import get_countries_cached
         meta = get_countries_cached().get(self.get_country_code())
         if meta is None:
             return False, 'País no configurado'
