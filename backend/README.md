@@ -65,6 +65,17 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 
 ---
 
+## Logging en base de datos
+
+El proyecto usa `django-db-logger` para almacenar errores HTTP 500 de `django.request` en la base de datos.
+
+Notas:
+- Se registra solo nivel `ERROR` para controlar volumen.
+- Para agregar logs manuales, usa un logger con handler `db_log` (ver `LOGGING` en `config/settings.py`).
+- En entornos con alto volumen, considera una politica de retencion o un job de limpieza periodica.
+
+---
+
 ## Estructura
 
 ```

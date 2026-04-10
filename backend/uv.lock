@@ -79,6 +79,7 @@ dependencies = [
     { name = "django" },
     { name = "django-celery-results" },
     { name = "django-cors-headers" },
+    { name = "django-db-logger" },
     { name = "django-filter" },
     { name = "django-redis" },
     { name = "djangorestframework" },
@@ -105,6 +106,7 @@ requires-dist = [
     { name = "django", specifier = ">=6.0.4" },
     { name = "django-celery-results", specifier = ">=2.6.0" },
     { name = "django-cors-headers", specifier = ">=4.9.0" },
+    { name = "django-db-logger", specifier = ">=0.1.13" },
     { name = "django-filter", specifier = ">=25.1" },
     { name = "django-redis", specifier = ">=6.0.0" },
     { name = "djangorestframework", specifier = ">=3.17.1" },
@@ -424,6 +426,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/21/39/55822b15b7ec87410f34cd16ce04065ff390e50f9e29f31d6d116fc80456/django_cors_headers-4.9.0.tar.gz", hash = "sha256:fe5d7cb59fdc2c8c646ce84b727ac2bca8912a247e6e68e1fb507372178e59e8", size = 21458, upload-time = "2025-09-18T10:40:52.326Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/30/d8/19ed1e47badf477d17fb177c1c19b5a21da0fd2d9f093f23be3fb86c5fab/django_cors_headers-4.9.0-py3-none-any.whl", hash = "sha256:15c7f20727f90044dcee2216a9fd7303741a864865f0c3657e28b7056f61b449", size = 12809, upload-time = "2025-09-18T10:40:50.843Z" },
+]
+
+[[package]]
+name = "django-db-logger"
+version = "0.1.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/4d/7a599b6c0c5ad63386ffff10b865e5729ba40a1fd49c8b152d71c62f7bb1/django-db-logger-0.1.13.tar.gz", hash = "sha256:a299a08638a741eb0b1d192f2a27eae57ed5118673c2aa916467f2e060c24e72", size = 10243, upload-time = "2023-11-29T09:42:33.261Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/09/44/da602c708b8c12e6603f2e1429b670e2988823b0a194ad1b4bccb344a77e/django_db_logger-0.1.13-py3-none-any.whl", hash = "sha256:7a1741468c4dc5e7f7cb6f06e1981b16cedff81d3d04d8d926c82b814a247133", size = 8439, upload-time = "2023-11-29T09:42:32.049Z" },
 ]
 
 [[package]]
