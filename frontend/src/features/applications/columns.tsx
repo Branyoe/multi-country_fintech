@@ -1,5 +1,9 @@
 import type { ColumnDef, CellContext } from '@tanstack/react-table'
+import { Link } from 'react-router'
+import { Eye } from 'lucide-react'
 import { Badge } from '~/components/ui/badge'
+import { buttonVariants } from '~/components/ui/button'
+import { cn } from '~/lib/utils'
 import type { CreditApplication, ApplicationCountry, ApplicationStatus, StatusMeta } from './types'
 
 type Cell = CellContext<CreditApplication, unknown>
@@ -97,6 +101,20 @@ export function createApplicationColumns(
     header: 'Fecha',
     meta: { orderingKey: 'requested_at' },
     cell: ({ getValue }: Cell) => formatDate(getValue() as string),
+  },
+  {
+    id: 'actions',
+    header: 'Acciones',
+    enableSorting: false,
+    cell: ({ row }: Cell) => (
+      <Link
+        to={`/applications/${row.original.id}`}
+        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'gap-1.5')}
+      >
+        <Eye className="size-4" />
+        Ver detalle
+      </Link>
+    ),
   },
   ]
 }

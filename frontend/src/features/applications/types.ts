@@ -32,6 +32,18 @@ export interface CreditApplication {
   updated_at: string
 }
 
+export interface ApplicationStatusTransition {
+  from_status: string
+  to_status: string
+  changed_by: string
+  changed_at: string
+  metadata: Record<string, unknown>
+}
+
+export interface CreditApplicationDetail extends CreditApplication {
+  status_history: ApplicationStatusTransition[]
+}
+
 export interface CreateApplicationPayload {
   country: ApplicationCountry
   full_name: string

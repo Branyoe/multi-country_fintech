@@ -5,6 +5,7 @@ import { loginAction, signupAction } from '~/features/auth/actions'
 import LoginPage from '~/features/auth/pages/LoginPage'
 import SignupPage from '~/features/auth/pages/SignupPage'
 import HomePage from '~/app/HomePage'
+import ApplicationDetailPage from '~/features/applications/pages/ApplicationDetailPage'
 
 function requireAuth({ request }: LoaderFunctionArgs) {
   const token = useAuthStore.getState().accessToken
@@ -31,6 +32,11 @@ export function createRouter() {
     path: '/',
     loader: requireAuth,
     element: <HomePage />,
+  },
+  {
+    path: '/applications/:id',
+    loader: requireAuth,
+    element: <ApplicationDetailPage />,
   },
   ])
 }
