@@ -187,8 +187,7 @@ def validate_country_rules_task(self, application_id: str) -> None:
     try:
         workflow = get_workflow(app.country)
         validator = get_validator(app.country_ref.code)
-        valid = workflow.validate(app, app.bank_data)
-        error_msg = '' if valid else 'financial_rules_failed'
+        valid, rejection_reason = workflow.validate(app, app.bank_data)
 
         for rule in validator.get_validation_rules():
             CountryValidation.objects.update_or_create(
@@ -196,19 +195,23 @@ def validate_country_rules_task(self, application_id: str) -> None:
                 rule_name=rule,
                 defaults={
                     'passed': valid,
-                    'detail': error_msg if not valid else '',
+                    'detail': rejection_reason if not valid else '',
                 },
             )
+
+        transition_metadata: dict = {
+            'task': 'validate_country_rules_task',
+            'event': 'success',
+            'valid': valid,
+        }
+        if not valid and rejection_reason:
+            transition_metadata['reason'] = rejection_reason
 
         CreditApplicationService.update_status(
             application_id=str(app.id),
             new_status_code='approved' if valid else 'rejected',
             changed_by='system:validate_country_rules_task:success',
-            metadata={
-                'task': 'validate_country_rules_task',
-                'event': 'success',
-                'valid': valid,
-            },
+            metadata=transition_metadata,
         )
     except Exception as exc:
         if self.request.retries >= self.max_retries:
