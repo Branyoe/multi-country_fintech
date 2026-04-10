@@ -15,7 +15,7 @@ def locmem_cache(settings):
 def setup_countries(db, locmem_cache):
     """Create Country records and clear cache for each test."""
     from django.core.cache import cache
-    from applications.models import Country
+    from countries.models import Country
 
     cache.clear()
 
