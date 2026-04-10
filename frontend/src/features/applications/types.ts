@@ -40,6 +40,12 @@ export interface ApplicationStatusTransition {
   metadata: Record<string, unknown>
 }
 
+export interface TimelineTransitionEvent {
+  event: 'timeline.transition.created'
+  application_id: string
+  transition: ApplicationStatusTransition
+}
+
 export interface CreditApplicationDetail extends CreditApplication {
   status_history: ApplicationStatusTransition[]
 }

@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, CircleDot } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
@@ -8,9 +8,14 @@ import { buttonVariants } from '~/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
 import { cn } from '~/lib/utils'
 import { fetchApplicationById } from '~/features/applications/api'
+import { useApplicationTimelineSocket } from '~/features/applications/hooks/useApplicationTimelineSocket'
 import { useCountries } from '~/features/applications/hooks/useCountries'
 import { useStatuses } from '~/features/applications/hooks/useStatuses'
-import type { ApplicationStatusTransition } from '~/features/applications/types'
+import type {
+  ApplicationStatusTransition,
+  CreditApplicationDetail,
+  TimelineTransitionEvent,
+} from '~/features/applications/types'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('es-MX', {
@@ -41,6 +46,7 @@ function statusVariant(code: string): 'secondary' | 'outline' | 'default' | 'des
 
 export default function ApplicationDetailPage() {
   const { id } = useParams()
+  const queryClient = useQueryClient()
   const { data: countries = [] } = useCountries()
   const statuses = useStatuses()
 
@@ -57,6 +63,41 @@ export default function ApplicationDetailPage() {
     queryKey: ['application-detail', id],
     queryFn: () => fetchApplicationById(id ?? ''),
     enabled: Boolean(id),
+  })
+
+  const onTimelineTransition = useCallback(
+    (event: TimelineTransitionEvent) => {
+      if (!id || event.application_id !== id) return
+
+      queryClient.setQueryData<CreditApplicationDetail | undefined>(['application-detail', id], (current) => {
+        if (!current) return current
+
+        const exists = current.status_history.some(
+          (item) =>
+            item.from_status === event.transition.from_status
+            && item.to_status === event.transition.to_status
+            && item.changed_by === event.transition.changed_by
+            && item.changed_at === event.transition.changed_at,
+        )
+
+        if (exists) return current
+
+        const status_history = [...current.status_history, event.transition].sort(
+          (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime(),
+        )
+
+        return {
+          ...current,
+          status_history,
+        }
+      })
+    },
+    [id, queryClient],
+  )
+
+  const { status: timelineSocketStatus } = useApplicationTimelineSocket({
+    applicationId: id,
+    onTransition: onTimelineTransition,
   })
 
   if (!id) {
@@ -149,6 +190,10 @@ export default function ApplicationDetailPage() {
             <CardTitle>Timeline de transiciones de estatus</CardTitle>
             <CardDescription>
               Historial cronológico de StatusTransitions para esta solicitud.
+              {' '}
+              {timelineSocketStatus === 'connected' && 'Actualizando en tiempo real.'}
+              {timelineSocketStatus === 'reconnecting' && 'Reconectando actualizaciones en vivo...'}
+              {timelineSocketStatus === 'disconnected' && 'Sin conexión en vivo.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -162,7 +207,7 @@ export default function ApplicationDetailPage() {
                       <CircleDot className="size-4 text-primary" />
                     </span>
                     {index < timeline.length - 1 && (
-                      <span className="absolute left-[7px] top-5 h-[calc(100%+8px)] w-px bg-border" />
+                      <span className="absolute left-1.75 top-5 h-[calc(100%+8px)] w-px bg-border" />
                     )}
                     <div className="space-y-1">
                       <p className="text-sm font-medium">
