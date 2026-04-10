@@ -45,7 +45,7 @@ export function createApplicationColumns(
   },
   {
     accessorKey: 'user_email',
-    header: 'Email',
+    header: 'Creada por',
     meta: { orderingKey: 'user__email' },
     cell: ({ getValue }: Cell) => (
       <span className="text-muted-foreground text-sm font-mono">
