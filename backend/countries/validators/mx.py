@@ -1,4 +1,11 @@
+import hashlib
+import json
+from pathlib import Path
+
+from .adapters.cnbv_mx import CNBVMXAdapter
 from .base import BaseCountryValidator, BankData
+
+_PROFILES_PATH = Path(__file__).parent / 'providers' / 'cnbv_mx.json'
 
 
 class MXCountryValidator(BaseCountryValidator):
@@ -10,17 +17,11 @@ class MXCountryValidator(BaseCountryValidator):
         return 'CURP'
 
     def fetch_bank_data(self, document: str) -> BankData:
-        return BankData(
-            provider_name='CNBV_MX',
-            account_status='active',
-            total_debt=5000.0,
-            credit_score=720,
-            raw_response={
-                'curp':  document.strip().upper(),
-                'score': 720,
-                'deuda': 5000.0,
-            },
-        )
+        profiles = json.loads(_PROFILES_PATH.read_text(encoding='utf-8'))
+        idx = int(hashlib.md5(document.encode()).hexdigest(), 16) % len(profiles)
+        raw = profiles[idx].copy()
+        raw['curp'] = document.strip().upper()
+        return CNBVMXAdapter().parse(raw)
 
     def validate_financial_rules(
         self, amount: float, income: float, bank_data: BankData
