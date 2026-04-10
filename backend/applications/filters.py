@@ -40,7 +40,7 @@ class CreditApplicationFilter(django_filters.FilterSet):
         countries = [v.upper() for v in self._normalized_values(value, name)]
         if not countries:
             return queryset
-        return queryset.filter(country__in=countries)
+        return queryset.filter(country_ref__code__in=countries)
 
     def filter_status(self, queryset, name, value):
         statuses = self._normalized_values(value, name)

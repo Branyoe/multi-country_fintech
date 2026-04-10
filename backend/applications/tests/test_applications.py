@@ -3,8 +3,8 @@ from django.test import Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 
-from countries.models import CountryValidation
-from applications.models import ApplicationStatusHistory, BankProviderData
+from countries.models import Country, CountryValidation
+from applications.models import ApplicationStatusHistory, BankProviderData, CreditApplication
 
 User = get_user_model()
 
@@ -131,6 +131,15 @@ class TestCreate:
         assert res.status_code == 201
         assert res.json()['document_type'] == 'CURP'
 
+    def test_create_document_type_comes_from_country_catalog(self, auth_client):
+        country = Country.objects.get(code='MX')
+        country.document_type = 'CURP_ALT'
+        country.save(update_fields=['document_type'])
+
+        res = auth_client.post(LIST_URL, payload(), content_type='application/json')
+        assert res.status_code == 201
+        assert res.json()['document_type'] == 'CURP_ALT'
+
     def test_create_missing_required_field(self, auth_client):
         data = payload()
         del data['full_name']
@@ -147,10 +156,18 @@ class TestCreate:
         assert res.status_code == 400
 
     def test_unsupported_country_returns_400(self, auth_client):
-        """Países válidos en el enum pero sin validator → 400 del service."""
+        """Países no activos/no configurados en catálogo deben fallar."""
         for country in ['ES', 'PT', 'IT', 'BR']:
             res = auth_client.post(LIST_URL, payload(country=country), content_type='application/json')
             assert res.status_code == 400, f'{country} debería retornar 400'
+
+    def test_inactive_country_returns_400(self, auth_client):
+        co = Country.objects.get(code='CO')
+        co.is_active = False
+        co.save(update_fields=['is_active'])
+
+        res = auth_client.post(LIST_URL, co_payload(), content_type='application/json')
+        assert res.status_code == 400
 
     def test_create_persists_bank_provider_data(self, auth_client):
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')
@@ -158,6 +175,10 @@ class TestCreate:
         assert BankProviderData.objects.filter(application_id=app_id).exists()
         bank = BankProviderData.objects.get(application_id=app_id)
         assert bank.provider_name == 'CNBV_MX'
+
+        app = CreditApplication.objects.get(id=app_id)
+        assert app.country_ref is not None
+        assert app.country_ref.code == app.country
 
     def test_create_persists_country_validations(self, auth_client):
         res = auth_client.post(LIST_URL, payload(), content_type='application/json')

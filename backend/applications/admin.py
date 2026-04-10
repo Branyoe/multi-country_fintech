@@ -31,7 +31,7 @@ class ApplicationStatusHistoryInline(admin.TabularInline):
 @admin.register(CreditApplication)
 class CreditApplicationAdmin(admin.ModelAdmin):
     list_display    = ('id', 'user', 'country', 'full_name', 'document_type', 'amount_requested', 'status', 'requested_at')
-    list_filter     = ('status', 'country', 'document_type')
+    list_filter     = ('status', 'country_ref', 'document_type')
     search_fields   = ('full_name', 'document_number', 'user__email')
     readonly_fields = ('id', 'requested_at', 'updated_at')
     ordering        = ('-requested_at',)
@@ -42,7 +42,7 @@ class CreditApplicationAdmin(admin.ModelAdmin):
             'fields': ('id', 'user', 'full_name', 'document_type', 'document_number'),
         }),
         ('Solicitud', {
-            'fields': ('country', 'amount_requested', 'monthly_income', 'status'),
+            'fields': ('country_ref', 'amount_requested', 'monthly_income', 'status'),
         }),
         ('Fechas', {
             'fields': ('requested_at', 'updated_at'),

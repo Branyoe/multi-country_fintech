@@ -1,10 +1,13 @@
 from rest_framework import serializers
 from django.core.validators import MinValueValidator
+from countries.models import Country
 from .models import CreditApplication
 
 
 class CreditApplicationSerializer(serializers.ModelSerializer):
     """Serializer de escritura — document_type lo fija el service según el país."""
+
+    country = serializers.CharField(write_only=True)
 
     amount_requested = serializers.DecimalField(
         max_digits=12, decimal_places=2,
@@ -24,6 +27,12 @@ class CreditApplicationSerializer(serializers.ModelSerializer):
             'amount_requested',
             'monthly_income',
         ]
+
+    def validate_country(self, value):
+        code = value.strip().upper()
+        if not Country.objects.filter(code=code, is_active=True).exists():
+            raise serializers.ValidationError('País no soportado o inactivo.')
+        return code
 
 
 class CreditApplicationStatusSerializer(serializers.ModelSerializer):
@@ -48,6 +57,7 @@ class CreditApplicationStatusSerializer(serializers.ModelSerializer):
 
 class CreditApplicationReadSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
+    country = serializers.ReadOnlyField()
 
     class Meta:
         model = CreditApplication

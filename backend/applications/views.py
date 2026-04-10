@@ -23,7 +23,7 @@ class CreditApplicationViewSet(
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
     filterset_class = CreditApplicationFilter
     search_fields = ['full_name', 'document_number']
-    ordering_fields = ['amount_requested', 'monthly_income', 'requested_at', 'updated_at', 'status', 'country']
+    ordering_fields = ['amount_requested', 'monthly_income', 'requested_at', 'updated_at', 'status', 'country_ref__code']
     ordering = ['-requested_at']
 
     def get_queryset(self):

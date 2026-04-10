@@ -1,6 +1,7 @@
 from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 
+from countries.models import Country
 from countries.models import CountryValidation
 from countries.validators.registry import get_validator
 from .models import (
@@ -18,7 +19,10 @@ class CreditApplicationService:
 
     @staticmethod
     def create(data: dict, user) -> CreditApplication:
-        country = data['country']
+        country = str(data['country']).strip().upper()
+        country_meta = Country.objects.filter(code=country, is_active=True).first()
+        if country_meta is None:
+            raise ValueError(f'País no soportado o inactivo: {country}')
 
         # 1. Resolver validator del país
         try:
@@ -48,9 +52,9 @@ class CreditApplicationService:
         # 5. Persistir solicitud
         application = CreditApplication.objects.create(
             user=user,
-            country=country,
+            country_ref=country_meta,
             full_name=data['full_name'],
-            document_type=validator.get_document_type(),
+            document_type=country_meta.document_type,
             document_number=document,
             amount_requested=data['amount_requested'],
             monthly_income=data['monthly_income'],
