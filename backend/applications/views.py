@@ -22,8 +22,8 @@ class CreditApplicationViewSet(
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
     filterset_class = CreditApplicationFilter
-    search_fields = ['full_name', 'document_number']
-    ordering_fields = ['full_name', 'document_type', 'document_number', 'amount_requested', 'monthly_income', 'requested_at', 'updated_at', 'status__order', 'country_ref__code']
+    search_fields = ['=id', 'full_name', 'user__email', 'document_number']
+    ordering_fields = ['id', 'full_name', 'user__email', 'document_type', 'document_number', 'amount_requested', 'monthly_income', 'requested_at', 'updated_at', 'status__order', 'country_ref__code']
     ordering = ['-requested_at']
 
     def get_queryset(self):
