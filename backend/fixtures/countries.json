@@ -1,6 +1,6 @@
 [
   {
-    "model": "applications.country",
+    "model": "countries.country",
     "pk": 1,
     "fields": {
       "code": "MX",
@@ -13,7 +13,7 @@
     }
   },
   {
-    "model": "applications.country",
+    "model": "countries.country",
     "pk": 2,
     "fields": {
       "code": "CO",
