@@ -88,7 +88,7 @@ interface DataTableProps<TData> {
   initialFilters?: Record<string, string | number | boolean | string[] | undefined>;
   /** Options for page size selector. Default: [10, 20, 50]. */
   pageSizeOptions?: number[];
-  /** Toggle the search box (debounced). Default: true. */
+  /** Toggle the search box (manual submit). Default: true. */
   enableSearch?: boolean;
   /** Filter dropdown configs; each key maps to a query param. */
   filterConfigs?: FilterConfig[];
@@ -117,7 +117,7 @@ export function DataTable<TData>({
     pageSize: initialPageSize,
   });
   const [search, setSearch] = useState(initialSearch);
-  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
+  const [appliedSearch, setAppliedSearch] = useState(initialSearch);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filters, setFilters] =
     useState<Record<string, string | number | boolean | string[] | undefined>>(
@@ -179,10 +179,10 @@ export function DataTable<TData>({
     );
   }, [columns, disableOrderingColumns]);
 
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(id);
-  }, [search]);
+  const applySearch = () => {
+    setAppliedSearch(search.trim());
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  };
 
   const orderingParam = useMemo(() => {
     if (sorting.length === 0) return initialOrdering;
@@ -201,7 +201,7 @@ export function DataTable<TData>({
   const params: DRFPaginatedParams = {
     page: pagination.pageIndex + 1,
     page_size: pagination.pageSize,
-    search: enableSearch ? debouncedSearch || undefined : undefined,
+    search: enableSearch ? appliedSearch || undefined : undefined,
     ordering: orderingParam,
     ...filters,
   };
@@ -244,17 +244,33 @@ export function DataTable<TData>({
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2 items-center">
           {enableSearch && (
-            <div className="relative w-64 max-w-xs">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-                }}
-                placeholder="Buscar..."
-                className="pl-9"
-              />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-64 max-w-xs">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applySearch();
+                    }
+                  }}
+                  placeholder="Buscar..."
+                  className="pl-9"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={applySearch}
+              >
+                Buscar
+              </Button>
             </div>
           )}
 
@@ -308,7 +324,7 @@ export function DataTable<TData>({
                       </>
                     )}
                 </PopoverTrigger>
-                <PopoverContent className="w-[200px] p-0" align="start">
+                <PopoverContent className="w-50 p-0" align="start">
                   <Command>
                     {filter.isSearchable && (
                       <CommandInput placeholder={`Buscar en ${filter.label.toLowerCase()}...`} />
