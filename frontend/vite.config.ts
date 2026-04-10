@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
+const usePolling = process.env.VITE_USE_POLLING !== 'false'
+const pollingInterval = Number(process.env.VITE_POLLING_INTERVAL ?? 500)
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
@@ -14,8 +17,8 @@ export default defineConfig({
       protocol: 'ws',
     },
     watch: {
-      usePolling: true,
-      interval: 500,
+      usePolling,
+      interval: pollingInterval,
     },
     proxy: {
       '/api':    { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: true },
