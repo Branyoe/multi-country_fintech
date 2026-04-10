@@ -14,7 +14,7 @@ services:
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=bravo psql -h localhost -U bravo -d bravo_dev -c 'SELECT 1' > /dev/null 2>&1"]
+      test: ["CMD", "pg_isready", "-U", "bravo", "-d", "bravo_dev", "-h", "localhost"]
       interval: 3s
       timeout: 5s
       retries: 20
@@ -45,6 +45,12 @@ services:
       - /app/.venv
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/countries/', timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,7 +71,7 @@ services:
       - /app/.venv
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -83,7 +89,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata_dev:
