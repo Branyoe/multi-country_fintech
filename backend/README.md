@@ -299,3 +299,45 @@ admin@dev.local / admin123
    - Corregir aserciones de status en `TestCreate` si cambia el estado de bootstrap.
    - Agregar o ajustar helpers de avance de estado en `TestTasks._advance_*` si los task tests necesitan pasar por el nuevo estado antes de ejecutar una tarea.
    - Ajustar `TestStatusHistory` si cambia el conteo de entradas o los valores `from_status`/`to_status`.
+
+---
+
+## Agregar una regla financiera a un país
+
+Las reglas financieras se evalúan en `validate_country_rules_task` usando `validator.validate_financial_rules()` y los resultados se persisten en `CountryValidation`.
+
+> **Limitación actual:** `validate_financial_rules()` devuelve un único resultado `(bool, message, field)` para todas las reglas combinadas. Todos los nombres en `get_validation_rules()` comparten ese mismo resultado en `CountryValidation` — si falla una regla, todas quedan como `passed=False`. El primer `return False` dentro del método cortocircuita las reglas siguientes.
+
+### Pasos
+
+1. **`countries/validators/<país>.py`** — añadir la condición en `validate_financial_rules()`
+
+   ```python
+   def validate_financial_rules(self, amount, income, bank_data):
+       if bank_data.credit_score is not None and bank_data.credit_score < 600:
+           return False, 'Score crediticio insuficiente (mínimo 600)', 'non_field_errors'
+       # reglas existentes …
+       return True, '', ''
+   ```
+
+   `error_field` puede ser un nombre de campo del serializer (`amount_requested`, `monthly_income`) o `non_field_errors` para errores de datos externos.
+
+2. **Mismo archivo** — registrar el nombre en `get_validation_rules()`
+
+   ```python
+   def get_validation_rules(self) -> list[str]:
+       return ['regla_existente', 'score_minimo_600']
+   ```
+
+3. **Tests** — clase `TestTasks` en `applications/tests/test_applications.py`
+   - Añadir un test con valores que disparen la nueva regla:
+     ```python
+     app = self._create_app(auth_client, payload(monthly_income='...'))
+     self._advance_mx_to_fetching(app)  # solo MX
+     fetching_bank_data_task(str(app.id))
+     validate_country_rules_task(str(app.id))
+     app.refresh_from_db()
+     assert app.status_code == 'rejected'
+     rules = list(CountryValidation.objects.filter(application=app).values_list('rule_name', flat=True))
+     assert 'score_minimo_600' in rules
+     ```
