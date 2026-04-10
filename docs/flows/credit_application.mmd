@@ -1,76 +1,60 @@
 flowchart TD
 
-    START(["POST /api/applications/"])
+    START(["Request\nPOST / PATCH"])
 
-    JWT["JWT validation\nBearer token"]
-
-    JWT_OK{"¿Token válido?"}
+    AUTH{"¿JWT válido?"}
     E401["401 Unauthorized"]
 
-    VALIDATOR["Country validator\nStrategy por país"]
+    GET_VALIDATOR["Obtener validator\npor country code"]
+
+    SUPPORTED{"¿País soportado?"}
+    E400_COUNTRY["400 Bad Request\nPaís no soportado"]
+
+    VAL_DOC["Validar documento\nformato por país"]
+
+    DOC_OK{"¿Documento válido?"}
+    E422_DOC["422 Unprocessable\nDocumento inválido"]
+
+    FETCH_BANK["Obtener datos bancarios\nproveedor mock por país"]
+
+    BANK_OK{"¿Proveedor respondió?"}
+    E502["502 Bad Gateway\nError proveedor bancario"]
+
+    VAL_RULES["Validar reglas financieras\npor país"]
 
     RULES_OK{"¿Reglas válidas?"}
-    E422["422 Validation error"]
+    E422_RULES["422 Unprocessable\nReglas no cumplidas"]
 
-    BANK["Bank provider mock\nDatos bancarios por país"]
+    PERSIST["Guardar application\n+ bank_provider_data\n+ country_validations"]
 
-    SAVE["Guardar en PostgreSQL\n+ disparar pg_notify"]
+    RESPONSE(["201 Created / 200 OK"])
 
-    ENQUEUE["Celery job enqueued\nEvaluación en background"]
+    START --> AUTH
+    AUTH -- "No" --> E401
+    AUTH -- "Sí" --> GET_VALIDATOR
+    GET_VALIDATOR --> SUPPORTED
+    SUPPORTED -- "No" --> E400_COUNTRY
+    SUPPORTED -- "Sí" --> VAL_DOC
+    VAL_DOC --> DOC_OK
+    DOC_OK -- "No" --> E422_DOC
+    DOC_OK -- "Sí" --> FETCH_BANK
+    FETCH_BANK --> BANK_OK
+    BANK_OK -- "No" --> E502
+    BANK_OK -- "Sí" --> VAL_RULES
+    VAL_RULES --> RULES_OK
+    RULES_OK -- "No" --> E422_RULES
+    RULES_OK -- "Sí" --> PERSIST
+    PERSIST --> RESPONSE
 
-    RESPONSE(["201 Created"])
-
-    CELERY["Job recibido por Celery\nDesde Redis queue"]
-
-    RISK["Evaluación de riesgo\nReglas + datos bancarios"]
-
-    RESULT{"Resultado del análisis"}
-
-    APPROVED["approved"]
-    REJECTED["rejected"]
-    REVIEW["under_review"]
-
-    STATUS["Actualizar status en DB\n+ application_status_history"]
-
-    CHANNELS["pg_notify → Django Channels\nWebSocket push al frontend"]
-
-    AUDIT["Audit log + Webhook\nRegistro + notif. externa"]
-
-    END(["Flujo completado"])
-
-    START --> JWT
-    JWT --> JWT_OK
-    JWT_OK -- "No" --> E401
-    JWT_OK -- "Sí" --> VALIDATOR
-    VALIDATOR --> RULES_OK
-    RULES_OK -- "No" --> E422
-    RULES_OK -- "Sí" --> BANK
-    BANK --> SAVE
-    SAVE --> ENQUEUE
-    ENQUEUE --> RESPONSE
-
-    ENQUEUE -.->|"async"| CELERY
-    CELERY --> RISK
-    RISK --> RESULT
-    RESULT -- "score alto" --> APPROVED
-    RESULT -- "score bajo" --> REJECTED
-    RESULT -- "requiere revisión" --> REVIEW
-    APPROVED --> STATUS
-    REJECTED --> STATUS
-    REVIEW --> STATUS
-    STATUS --> CHANNELS
-    CHANNELS --> AUDIT
-    AUDIT --> END
-
-    style E401 fill:#F09595,stroke:#A32D2D,color:#501313
-    style E422 fill:#F09595,stroke:#A32D2D,color:#501313
-    style APPROVED fill:#C0DD97,stroke:#3B6D11,color:#173404
-    style REJECTED fill:#F09595,stroke:#A32D2D,color:#501313
-    style REVIEW fill:#FAC775,stroke:#854F0B,color:#412402
     style START fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
-    style END fill:#D3D1C7,stroke:#5F5E5A,color:#2C2C2A
-    style ENQUEUE fill:#F5C4B3,stroke:#993C1D,color:#4A1B0C
-    style CELERY fill:#F5C4B3,stroke:#993C1D,color:#4A1B0C
-    style CHANNELS fill:#9FE1CB,stroke:#0F6E56,color:#04342C
-    style SAVE fill:#B5D4F4,stroke:#185FA5,color:#042C53
-    style STATUS fill:#B5D4F4,stroke:#185FA5,color:#042C53
+    style RESPONSE fill:#C0DD97,stroke:#3B6D11,color:#173404
+    style E401 fill:#F09595,stroke:#A32D2D,color:#501313
+    style E400_COUNTRY fill:#F09595,stroke:#A32D2D,color:#501313
+    style E422_DOC fill:#F09595,stroke:#A32D2D,color:#501313
+    style E502 fill:#FAC775,stroke:#854F0B,color:#412402
+    style E422_RULES fill:#F09595,stroke:#A32D2D,color:#501313
+    style GET_VALIDATOR fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style VAL_DOC fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style VAL_RULES fill:#CECBF6,stroke:#534AB7,color:#26215C
+    style FETCH_BANK fill:#9FE1CB,stroke:#0F6E56,color:#04342C
+    style PERSIST fill:#B5D4F4,stroke:#185FA5,color:#042C53

@@ -1,9 +1,9 @@
 import axios from 'axios'
 import { redirect } from 'react-router'
 import type { ActionFunctionArgs } from 'react-router'
-import { publicApi } from '~/lib/api'
+import { api, publicApi } from '~/lib/api'
 import { useAuthStore } from '~/features/auth/store'
-import type { TokenPair } from '~/types/api'
+import type { TokenPair, User } from '~/types/api'
 
 export async function loginAction({ request }: ActionFunctionArgs) {
   const form = await request.formData()
@@ -13,6 +13,8 @@ export async function loginAction({ request }: ActionFunctionArgs) {
   try {
     const { data } = await publicApi.post<TokenPair>('/auth/token/', { email, password })
     useAuthStore.getState().setTokens(data.access, data.refresh)
+    const { data: user } = await api.get<User>('/auth/me/')
+    useAuthStore.getState().setUser(user)
     return redirect('/')
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.status === 401) {

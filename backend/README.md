@@ -30,7 +30,7 @@ API REST para evaluación de solicitudes de crédito con estrategia por país.
 Desde la **raíz del repositorio**:
 
 ```bash
-bash gen.sh
+bash backend/gen.sh
 ```
 
 El script hace en orden:
@@ -62,6 +62,17 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
+
+---
+
+## Logging en base de datos
+
+El proyecto usa `django-db-logger` para almacenar errores HTTP 500 de `django.request` en la base de datos.
+
+Notas:
+- Se registra solo nivel `ERROR` para controlar volumen.
+- Para agregar logs manuales, usa un logger con handler `db_log` (ver `LOGGING` en `config/settings.py`).
+- En entornos con alto volumen, considera una politica de retencion o un job de limpieza periodica.
 
 ---
 

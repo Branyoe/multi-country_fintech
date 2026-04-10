@@ -9,7 +9,7 @@ Tests end-to-end con Playwright sobre Chromium. Cubren los flujos de autenticaci
 - Backend corriendo en `http://localhost:8000` con el fixture de usuarios cargado
 - El script `gen.sh` en la raíz levanta el backend y carga los fixtures:
   ```bash
-  bash gen.sh
+  bash backend/gen.sh
   uv run backend/manage.py runserver
   ```
 - Credenciales del fixture: `admin@dev.local` / `admin123`

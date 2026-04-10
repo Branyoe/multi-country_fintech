@@ -15,7 +15,11 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center">
+          <span className="font-display font-bold text-2xl tracking-tight text-foreground">fintech</span>
+        </div>
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Crear cuenta</CardTitle>
           <CardDescription>Regístrate para empezar</CardDescription>
@@ -52,6 +56,7 @@ export default function SignupPage() {
           </CardFooter>
         </Form>
       </Card>
+      </div>
     </div>
   )
 }

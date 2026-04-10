@@ -13,7 +13,7 @@ test('login exitoso redirige al home', async ({ page }) => {
   await page.getByRole('button', { name: /ingresar/i }).click()
 
   await expect(page).toHaveURL('/')
-  await expect(page.getByText('Bienvenido')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /solicitudes de crédito/i })).toBeVisible()
 })
 
 test('credenciales incorrectas muestra error', async ({ page }) => {
@@ -55,7 +55,7 @@ test('botón muestra estado de carga al enviar', async ({ page }) => {
   await button.click()
 
   // Captura el estado intermedio antes de que complete el redirect
-  await expect(page.getByRole('button', { name: /ingresando/i }).or(page.getByText('Bienvenido'))).toBeVisible()
+  await expect(page.getByRole('button', { name: /ingresando/i }).or(page.getByRole('heading', { name: /solicitudes de crédito/i }))).toBeVisible()
 })
 
 test('link a signup navega correctamente', async ({ page }) => {

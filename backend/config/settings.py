@@ -37,17 +37,24 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'daphne',
     'django.contrib.staticfiles',
     # Third party
+    'channels',
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
+    'django_celery_results',
+    'django_db_logger',
     # Local
     'users',
+    'applications',
+    'countries',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -75,17 +82,31 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+_db_engine = config('DB_ENGINE', default='django.db.backends.sqlite3')
+if _db_engine == 'django.db.backends.sqlite3':
+    DATABASES = {
+        'default': {
+            'ENGINE': _db_engine,
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE':   _db_engine,
+            'NAME':     config('DB_NAME',     default='bravo'),
+            'USER':     config('DB_USER',     default='bravo'),
+            'PASSWORD': config('DB_PASSWORD', default='bravo'),
+            'HOST':     config('DB_HOST',     default='localhost'),
+            'PORT':     config('DB_PORT',     default='5432'),
+        }
+    }
 
 
 # Password validation
@@ -122,7 +143,54 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
+# ── Cache (Redis DB 1 — Celery usa DB 0) ─────────────────────────────────────
+CACHE_URL = config('CACHE_URL', default='redis://localhost:6379/1')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': CACHE_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            # Si Redis no está disponible, las operaciones de cache fallan silenciosamente
+            # (cache miss → query a DB). El servicio sigue funcionando sin Redis.
+            'IGNORE_EXCEPTIONS': True,
+        },
+    }
+}
+
+# ── Celery ────────────────────────────────────────────────────────────────────
+CELERY_BROKER_URL        = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND    = 'django-db'
+CELERY_RESULT_EXTENDED   = True
+CELERY_ACCEPT_CONTENT    = ['json']
+CELERY_TASK_SERIALIZER   = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE          = TIME_ZONE
+
+CHANNEL_LAYER_URL = config('CHANNEL_LAYER_URL', default='redis://localhost:6379/2')
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [CHANNEL_LAYER_URL],
+        },
+    },
+}
+
+# ── Webhooks ────────────────────────────────────────────────────────────────
+WEBHOOK_URL = config('WEBHOOK_URL', default='')
+WEBHOOK_TIMEOUT_SECONDS = config('WEBHOOK_TIMEOUT_SECONDS', default=5, cast=int)
+WEBHOOK_RETRY_COUNTDOWN_SECONDS = config('WEBHOOK_RETRY_COUNTDOWN_SECONDS', default=30, cast=int)
 
 AUTH_USER_MODEL = 'users.User'
 
@@ -136,6 +204,11 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
 }
 
 # SimpleJWT
@@ -148,9 +221,52 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
+# CSRF
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:3000,http://localhost:8000',
+    cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
+)
+
 # CORS
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='',
     cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
 )
+
+DJANGO_DB_LOGGER_ENABLE_FORMATTER = True
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s %(asctime)s %(name)s %(message)s',
+        },
+    },
+    'handlers': {
+        'db_log': {
+            'level': 'INFO',
+            'class': 'django_db_logger.db_log_handler.DatabaseLogHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['db_log'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'applications': {
+            'handlers': ['db_log'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'countries': {
+            'handlers': ['db_log'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
